@@ -1,6 +1,6 @@
 <!DOCTYPE airframe SYSTEM "../airframe.dtd">
 
-<airframe name="groep_11_main_config" dir="tudelft">
+<airframe name="groep_11_main_config">
   <description>MAVLAB Course TUDelft 2026
   </description>
 
