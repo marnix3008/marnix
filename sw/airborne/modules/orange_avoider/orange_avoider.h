@@ -14,7 +14,10 @@
 #define ORANGE_AVOIDER_H
 
 // settings
-extern float oa_color_count_frac;
+extern float oa_free_threshold;         // danger score below which a slice is free (0-100)
+extern float oa_min_gap_width;          // minimum adjacent free slices to form a valid gap
+extern float oa_max_heading_increment;  // max heading change per tick [deg]
+extern float maxDistance;               // max waypoint displacement [m]
 
 // functions
 extern void orange_avoider_init(void);

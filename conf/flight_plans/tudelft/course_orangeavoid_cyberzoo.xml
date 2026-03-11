@@ -38,7 +38,7 @@
       <corner name="_CZ2"/>
       <corner name="_CZ3"/>
       <corner name="_CZ4"/>
-    </sector>
+  </sector>
 
     <!-- Inner geofence (soft stop, obstacle zone) -->
     <sector color="#FF9922" name="ObstacleZone">
