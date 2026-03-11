@@ -36,8 +36,8 @@
 #define VERBOSE_PRINT(...)
 #endif
 
-#define NUM_SLICES   12
-#define CENTER_SLICE 5.5f   // (NUM_SLICES - 1) / 2.0
+#define NUM_SLICES   12 // Number of vertical slices, must match the vision module
+#define CENTER_SLICE 5.5f   // (NUM_SLICES - 1) / 2.0, ADJUST MANUALLY IF NUM_SLICES CHANGES
 
 static uint8_t moveWaypointForward(uint8_t waypoint, float distanceMeters);
 static uint8_t calculateForwards(struct EnuCoor_i *new_coor, float distanceMeters);
