@@ -88,6 +88,12 @@
       <define name="DETECT_GATE_V_MIN" value="0"/>
       <define name="DETECT_GATE_V_MAX" value="130"/>
     </module>
+    <module name="danger_detector">
+      <define name="DANGER_DETECTOR_CAMERA" value="front_camera"/>
+      <define name="DANGER_DETECTOR_FPS" value="0"/>
+      <define name="DANGER_DETECTOR_NUM_COLUMNS" value="12"/>
+      <define name="DANGER_DETECTOR_VERBOSE"/>
+    </module>
     <module name="video_rtp_stream">
       <define name="VIEWVIDEO_CAMERA" value="front_camera"/>
       <define name="VIEWVIDEO_CAMERA2" value="bottom_camera"/>
