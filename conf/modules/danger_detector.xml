@@ -5,19 +5,22 @@
     <description>
 Danger detector for the TU Delft Cyberzoo.
 
-Processes the bottom strip of the camera image and divides it into columns.
-Each column receives a danger score from 0 (safe/green floor) to 100 (fully blocked).
-Green floor pixels are detected using simple YUV thresholds.
+The camera is in portrait orientation with the floor on the LEFT side.
+Processes the left dd_floor_strip_frac of the image width and divides it into
+Danger_DETECTOR_NUM_ZONES horizontal bands (rows).
+Each zone receives a danger score 0 (safe/green floor) to 100 (fully blocked).
+  0-24  = low, 25-49 = medium, 50-74 = high, 75-100 = critical
 
+Green floor pixels are detected using simple YUV thresholds.
 Results are stored in danger_scores[] and can be read by other modules via
 danger_detector_get_scores().
 
 This module does NOT yet steer the drone – it only computes the scores.
     </description>
-    <define name="DANGER_DETECTOR_CAMERA"    value="front_camera" description="Camera device to use for detection"/>
-    <define name="DANGER_DETECTOR_FPS"       value="0"            description="Desired FPS (0 = camera rate)"/>
-    <define name="DANGER_DETECTOR_NUM_COLUMNS" value="12"         description="Number of columns to divide the image into"/>
-    <define name="DANGER_DETECTOR_VERBOSE"   value=""             description="Define to print scores every periodic cycle"/>
+    <define name="DANGER_DETECTOR_CAMERA"  value="front_camera" description="Camera device to use for detection"/>
+    <define name="DANGER_DETECTOR_FPS"     value="0"            description="Desired FPS (0 = camera rate)"/>
+    <define name="DANGER_DETECTOR_NUM_ZONES" value="9"          description="Number of horizontal zones to divide the image height into"/>
+    <define name="DANGER_DETECTOR_VERBOSE" value=""             description="Define to print zone scores every periodic cycle"/>
   </doc>
 
   <settings>

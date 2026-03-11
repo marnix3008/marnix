@@ -91,7 +91,7 @@
     <module name="danger_detector">
       <define name="DANGER_DETECTOR_CAMERA" value="front_camera"/>
       <define name="DANGER_DETECTOR_FPS" value="0"/>
-      <define name="DANGER_DETECTOR_NUM_COLUMNS" value="12"/>
+      <define name="DANGER_DETECTOR_NUM_ZONES" value="9"/>
       <define name="DANGER_DETECTOR_VERBOSE"/>
     </module>
     <module name="video_rtp_stream">
