@@ -32,6 +32,10 @@
 #define DANGER_DETECTOR_NUM_ZONES 9
 #endif
 
+#ifndef DANGER_DETECTOR_SENDER_ID
+#define DANGER_DETECTOR_SENDER_ID 1  // must match OBSTACLE_DETECTION_ID in orange_avoider
+#endif
+
 /** Danger score per horizontal zone: 0 (safe) … 100 (blocked). Updated on
  *  every processed camera frame. Access from other modules after calling
  *  danger_detector_get_scores(). */

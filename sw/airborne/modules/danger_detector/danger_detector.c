@@ -39,6 +39,7 @@
 #include "modules/danger_detector/danger_detector.h"
 #include "modules/computer_vision/cv.h"
 #include "modules/computer_vision/lib/vision/image.h"
+#include "modules/core/abi.h"
 #include "std.h"
 
 #include <string.h>
@@ -315,6 +316,10 @@ void danger_detector_periodic(void)
     _scores_updated = false;
   }
   pthread_mutex_unlock(&_mutex);
+
+  /* Broadcast scores to other modules via ABI (consumed by orange_avoider). */
+  AbiSendMsgPAYLOAD_DATA(DANGER_DETECTOR_SENDER_ID, 0, 1,
+                          DANGER_DETECTOR_NUM_ZONES, danger_scores);
 
   /* Print scores to stderr for debugging. */
 #ifdef DANGER_DETECTOR_VERBOSE
