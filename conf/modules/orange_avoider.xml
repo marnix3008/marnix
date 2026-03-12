@@ -8,7 +8,7 @@ via PAYLOAD_DATA ABI from the vision team. Finds the widest gap of free slices
 and steers toward it. Falls back to weighted-centroid turning when fully blocked.
 Set OBSTACLE_DETECTION_ID to match the sender ID used by the vision module.
     </description>
-    <define name="OBSTACLE_DETECTION_ID" value="ABI_BROADCAST" description="ABI sender ID of the vision module publishing 12-slice danger values via PAYLOAD_DATA."/>
+    <define name="OBSTACLE_DETECTION_ID" value="ABI_BROADCAST" />
   </doc>
   <settings>
     <dl_settings>
