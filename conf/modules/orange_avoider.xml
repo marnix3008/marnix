@@ -8,15 +8,19 @@ via PAYLOAD_DATA ABI from the vision team. Finds the widest gap of free slices
 and steers toward it. Falls back to weighted-centroid turning when fully blocked.
 Set OBSTACLE_DETECTION_ID to match the sender ID used by the vision module.
     </description>
-    <define name="OBSTACLE_DETECTION_ID" value="ABI_BROADCAST" />
+    <define name="OBSTACLE_DETECTION_ID" value="ABI_BROADCAST"/>
   </doc>
   <settings>
     <dl_settings>
       <dl_settings name="OrangeAvoider">
-        <dl_setting var="oa_free_threshold"        min="0"   step="1"   max="100" shortname="free_thr" description="Danger score below which a slice is free (0-100)"/>
+        <dl_setting var="oa_free_threshold"        min="0"   step="1"   max="100" shortname="free_thr"/>
+        <dl_setting var="oa_min_gap_width"         min="1"   step="1"   max="6"   shortname="min_gap"/>
+        <dl_setting var="oa_max_heading_increment" min="1"   step="0.5" max="15"  shortname="head_inc"/>
+        <dl_setting var="maxDistance"              min="0.5" step="0.1" max="5"   shortname="max_dist"/>
+        <!-- <dl_setting var="oa_free_threshold"        min="0"   step="1"   max="100" shortname="free_thr" description="Danger score below which a slice is free (0-100)"/>
         <dl_setting var="oa_min_gap_width"         min="1"   step="1"   max="6"   shortname="min_gap"  description="Minimum adjacent free slices for a valid gap"/>
         <dl_setting var="oa_max_heading_increment" min="1"   step="0.5" max="15"  shortname="head_inc" description="Max heading change per tick [deg]"/>
-        <dl_setting var="maxDistance"              min="0.5" step="0.1" max="5"   shortname="max_dist" description="Max waypoint displacement [m]"/>
+        <dl_setting var="maxDistance"              min="0.5" step="0.1" max="5"   shortname="max_dist" description="Max waypoint displacement [m]"/> -->
       </dl_settings>
     </dl_settings>
   </settings>
