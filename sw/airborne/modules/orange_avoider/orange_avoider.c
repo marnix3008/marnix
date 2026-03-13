@@ -57,12 +57,15 @@ enum navigation_state_t {
 float oa_free_threshold        = 30.f;  // danger score below which a slice is considered free (0-100)
 float oa_min_gap_width         = 2.f;   // minimum number of adjacent free slices to form a valid gap
 float oa_max_heading_increment = 5.f;   // maximum heading change per tick [deg]
-float maxDistance              = 2.25f; // max waypoint displacement [m]
+float maxDistance              = 1.0f;  // max waypoint displacement [m]
 
 // State
 enum navigation_state_t navigation_state = SEARCH_FOR_SAFE_HEADING;
 int16_t obstacle_free_confidence = 0;
 float   committed_heading_increment = 0.f; // heading increment committed on entering SEARCH state
+static int16_t search_ticks = 0;           // ticks spent turning without finding a gap
+#define SEARCH_STUCK_TICKS    3            // after this many failed ticks, do a big jump turn
+#define SEARCH_STUCK_JUMP_DEG 40.f         // degrees for the jump turn
 
 const int16_t max_trajectory_confidence = 5;
 
@@ -188,12 +191,17 @@ void orange_avoider_periodic(void)
         navigation_state = OBSTACLE_FOUND;
 
       } else {
-        // Steer toward the center of the widest free gap
-        // gap left of center (offset < 0) → negative increment → turn left
-        // gap right of center (offset > 0) → positive increment → turn right
-        float offset = gap_center - CENTER_SLICE;
-        float heading_correction = (offset / CENTER_SLICE) * oa_max_heading_increment;
-        increase_nav_heading(heading_correction);
+        // Only correct heading when the forward path (center third of slices) is becoming dangerous.
+        // This prevents jitter from peripheral noise when flying through open space.
+        uint8_t forward_danger = 0;
+        for (int i = NUM_SLICES / 3; i < 2 * NUM_SLICES / 3; i++) {
+          if (slice_danger[i] > forward_danger) { forward_danger = slice_danger[i]; }
+        }
+        if (forward_danger >= (uint8_t)oa_free_threshold) {
+          float offset = gap_center - CENTER_SLICE;
+          float heading_correction = (offset / CENTER_SLICE) * oa_max_heading_increment;
+          increase_nav_heading(heading_correction);
+        }
         moveWaypointForward(WP_GOAL, moveDistance);
       }
       break;
@@ -214,14 +222,25 @@ void orange_avoider_periodic(void)
       VERBOSE_PRINT("Obstacle found. Committed increment: %.1f deg\n",
                     committed_heading_increment);
 
+      search_ticks = 0;
       navigation_state = SEARCH_FOR_SAFE_HEADING;
       break;
 
     case SEARCH_FOR_SAFE_HEADING:
-      increase_nav_heading(committed_heading_increment);
-
       if (gap_found && obstacle_free_confidence >= 2) {
+        search_ticks = 0;
         navigation_state = SAFE;
+      } else {
+        search_ticks++;
+        if (search_ticks >= SEARCH_STUCK_TICKS) {
+          // Still blocked after several small turns: jump in the committed direction
+          float jump = (committed_heading_increment >= 0.f)
+                       ?  SEARCH_STUCK_JUMP_DEG : -SEARCH_STUCK_JUMP_DEG;
+          increase_nav_heading(jump);
+          search_ticks = 0;
+        } else {
+          increase_nav_heading(committed_heading_increment);
+        }
       }
       break;
 
