@@ -27,7 +27,9 @@
 #include <time.h>
 #include <stdio.h>
 
-#define ORANGE_AVOIDER_VERBOSE TRUE
+#ifndef ORANGE_AVOIDER_VERBOSE
+#define ORANGE_AVOIDER_VERBOSE TRUE   // set FALSE in airframe XML to disable on the real drone
+#endif
 
 #define PRINT(string,...) fprintf(stderr, "[orange_avoider->%s()] " string,__FUNCTION__ , ##__VA_ARGS__)
 #if ORANGE_AVOIDER_VERBOSE
@@ -185,9 +187,11 @@ void orange_avoider_periodic(void)
       moveWaypointForward(WP_TRAJECTORY, 1.5f * moveDistance);
 
       if (!InsideObstacleZone(WaypointX(WP_TRAJECTORY), WaypointY(WP_TRAJECTORY))) {
+        VERBOSE_PRINT("Trajectory out of arena bounds, turning back\n");
         navigation_state = OUT_OF_BOUNDS;
 
       } else if (!gap_found) {
+        VERBOSE_PRINT("No safe gap found, stopping to find new heading\n");
         navigation_state = OBSTACLE_FOUND;
 
       } else {
@@ -200,7 +204,11 @@ void orange_avoider_periodic(void)
         if (forward_danger >= (uint8_t)oa_free_threshold) {
           float offset = gap_center - CENTER_SLICE;
           float heading_correction = (offset / CENTER_SLICE) * oa_max_heading_increment;
+          VERBOSE_PRINT("Forward danger %d, steering toward gap at slice %.1f (correction %.1f deg)\n",
+                        forward_danger, gap_center, heading_correction);
           increase_nav_heading(heading_correction);
+        } else {
+          VERBOSE_PRINT("Flying straight, forward path clear (danger %d)\n", forward_danger);
         }
         moveWaypointForward(WP_GOAL, moveDistance);
       }
@@ -219,7 +227,7 @@ void orange_avoider_periodic(void)
         committed_heading_increment = fallback_heading_increment();
       }
 
-      VERBOSE_PRINT("Obstacle found. Committed increment: %.1f deg\n",
+      VERBOSE_PRINT("Obstacle found. Committed turn: %.1f deg/tick\n",
                     committed_heading_increment);
 
       search_ticks = 0;
@@ -228,17 +236,20 @@ void orange_avoider_periodic(void)
 
     case SEARCH_FOR_SAFE_HEADING:
       if (gap_found && obstacle_free_confidence >= 2) {
+        VERBOSE_PRINT("Safe heading found (gap at slice %.1f), resuming flight\n", gap_center);
         search_ticks = 0;
         navigation_state = SAFE;
       } else {
         search_ticks++;
         if (search_ticks >= SEARCH_STUCK_TICKS) {
-          // Still blocked after several small turns: jump in the committed direction
           float jump = (committed_heading_increment >= 0.f)
                        ?  SEARCH_STUCK_JUMP_DEG : -SEARCH_STUCK_JUMP_DEG;
+          VERBOSE_PRINT("Stuck after %d ticks, jumping %.0f deg\n", search_ticks, jump);
           increase_nav_heading(jump);
           search_ticks = 0;
         } else {
+          VERBOSE_PRINT("Searching: tick %d/%d, turning %.1f deg\n",
+                        search_ticks, SEARCH_STUCK_TICKS, committed_heading_increment);
           increase_nav_heading(committed_heading_increment);
         }
       }
@@ -249,6 +260,7 @@ void orange_avoider_periodic(void)
       moveWaypointForward(WP_TRAJECTORY, 1.5f);
 
       if (InsideObstacleZone(WaypointX(WP_TRAJECTORY), WaypointY(WP_TRAJECTORY))) {
+        VERBOSE_PRINT("Back inside arena, resuming search for safe heading\n");
         increase_nav_heading(oa_max_heading_increment);
         obstacle_free_confidence = 0;
         navigation_state = SEARCH_FOR_SAFE_HEADING;
