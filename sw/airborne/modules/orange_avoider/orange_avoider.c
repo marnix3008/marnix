@@ -152,6 +152,13 @@ static float fallback_heading_increment(void)
     return oa_max_heading_increment; // default: small right turn
   }
   float obstacle_offset = weighted_sum / total; // negative=left, positive=right
+
+  // If wall is symmetric (centroid within 1 slice of center), the signal is too
+  // weak to pick a direction — default to a full right turn to break the deadlock.
+  if (obstacle_offset > -1.f && obstacle_offset < 1.f) {
+    return oa_max_heading_increment;
+  }
+
   // turn away: obstacle right → turn left (negative increment), and vice versa
   return -(obstacle_offset / CENTER_SLICE) * oa_max_heading_increment;
 }
@@ -202,15 +209,17 @@ void orange_avoider_periodic(void)
           if (slice_danger[i] > forward_danger) { forward_danger = slice_danger[i]; }
         }
         if (forward_danger >= (uint8_t)oa_free_threshold) {
+          // Path ahead is dangerous: turn in place only, do NOT move forward
           float offset = gap_center - CENTER_SLICE;
           float heading_correction = (offset / CENTER_SLICE) * oa_max_heading_increment;
-          VERBOSE_PRINT("Forward danger %d, steering toward gap at slice %.1f (correction %.1f deg)\n",
+          VERBOSE_PRINT("Forward danger %d, turning toward gap at slice %.1f (correction %.1f deg) — holding position\n",
                         forward_danger, gap_center, heading_correction);
           increase_nav_heading(heading_correction);
         } else {
+          // Path clear: fly straight
           VERBOSE_PRINT("Flying straight, forward path clear (danger %d)\n", forward_danger);
+          moveWaypointForward(WP_GOAL, moveDistance);
         }
-        moveWaypointForward(WP_GOAL, moveDistance);
       }
       break;
 
