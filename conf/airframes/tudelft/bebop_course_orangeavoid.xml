@@ -10,6 +10,7 @@
       <define name="VIDEO_CAPTURE_PATH" value="/data/ftp/internal_000/images"/>
       <define name="LOGGER_FILE_PATH" value="/data/ftp/internal_000/log"/>
       <define name="MT9V117_TARGET_FPS" value="20"/>
+      <define name="ORANGE_AVOIDER_VERBOSE" value="FALSE"/><!-- default OFF on real drone -->
       
       <!-- Detect orange (unused, kept for reference) -->
       <!--define name="COLOR_OBJECT_DETECTOR_LUM_MIN1" value="30"/>
@@ -28,6 +29,7 @@
       <module name="fdm" type="gazebo"/>
       <define name="VIDEO_CAPTURE_PATH" value="/tmp/paparazzi/images"/>
       <define name="LOGGER_FILE_PATH" value="/tmp/paparazzi/log"/>
+      <define name="ORANGE_AVOIDER_VERBOSE" value="TRUE"/><!-- default ON in simulation -->
       
       <!-- Detect orange (unused, kept for reference) -->
       <!--define name="COLOR_OBJECT_DETECTOR_LUM_MIN1" value="41"/>
@@ -73,6 +75,8 @@
     <module name="orange_avoider">
       <!-- Set to match the sender ID used by the vision team's slice detection module -->
       <define name="OBSTACLE_DETECTION_ID" value="1"/>
+      <!-- Manual override: uncomment to force verbose ON regardless of target -->
+      <!-- <define name="ORANGE_AVOIDER_VERBOSE" value="TRUE"/> -->
     </module>
     <module name="danger_detector">
       <define name="DANGER_DETECTOR_CAMERA" value="front_camera"/>
