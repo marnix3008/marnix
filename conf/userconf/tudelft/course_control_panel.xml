@@ -2,6 +2,7 @@
   <section name="programs">
     <program name="UnifiedMoCap" command="sw/ext/unifiedmocaprouter/build/mocap-router"/>
     <program name="GST" command="/usr/bin/gst-launch-1.0"/>
+    <program name="GST Record" command="/usr/bin/gst-launch-1.0"/>
   </section>
   <section name="sessions">
     <session name="Distance Counter">
@@ -79,6 +80,58 @@
         <arg flag="method=counterclockwise"/>
         <arg flag="!"/>
         <arg flag="autovideosink"/>
+      </program>
+    </session>
+    <session name="Simulation - Gazebo + GST Record PNG">
+      <program name="Simulator">
+        <arg flag="-a" constant="bebop_orange_avoid"/>
+        <arg flag="-t" constant="nps"/>
+      </program>
+      <program name="Data Link">
+        <arg flag="-udp"/>
+        <arg flag="-ping_period" constant="100"/>
+      </program>
+      <program name="Server">
+        <arg flag="-n"/>
+      </program>
+      <program name="PprzGCS">
+        <arg flag="--speech"/>
+      </program>
+      <program name="Joystick">
+        <arg flag="-ac" constant="bebop_orange_avoid"/>
+        <arg flag="sm600.xml"/>
+        <arg flag="-d" constant="0"/>
+      </program>
+      <program name="Gazebo"/>
+      <program name="GST Record">
+        <arg flag="udpsrc"/>
+        <arg flag="port=5000"/>
+        <arg flag="caps=application/x-rtp,payload=26"/>
+        <arg flag="!"/>
+        <arg flag="rtpjpegdepay"/>
+        <arg flag="!"/>
+        <arg flag="jpegdec"/>
+        <arg flag="!"/>
+        <arg flag="videoflip"/>
+        <arg flag="method=counterclockwise"/>
+        <arg flag="!"/>
+        <arg flag="tee"/>
+        <arg flag="name=t"/>
+        <arg flag="t."/>
+        <arg flag="!"/>
+        <arg flag="queue"/>
+        <arg flag="!"/>
+        <arg flag="autovideosink"/>
+        <arg flag="t."/>
+        <arg flag="!"/>
+        <arg flag="queue"/>
+        <arg flag="!"/>
+        <arg flag="videoconvert"/>
+        <arg flag="!"/>
+        <arg flag="pngenc"/>
+        <arg flag="!"/>
+        <arg flag="multifilesink"/>
+        <arg flag="location=/home/ebbe/gazebo_sim_video_feed/frame_%05d.png"/>
       </program>
     </session>
     <session name="Simulation - Gazebo + PS Controller">
