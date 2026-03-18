@@ -57,12 +57,90 @@ def keep_tall_regions(mask: np.ndarray, min_height_width_ratio: float, min_area:
 	return tall_mask, kept_regions
 
 
+def cluster_blobs(mask: np.ndarray, dilation_kernel_size: int = 10) -> tuple[np.ndarray, int, list[dict]]:
+	"""
+	Use connected component analysis to find and label separate blobs.
+	Applies morphological dilation to close small gaps between blob parts.
+	
+	Args:
+		- mask: Binary mask of detected regions
+		- dilation_kernel_size: Size of the dilation kernel to close gaps. Larger = less strict clustering.
+	
+	Returns:
+		- labeled_mask: Image where each blob has a unique label (0 = background)
+		- num_blobs: Number of blobs found
+		- blob_info: List of dicts with stats for each blob (area, centroid, bounding box)
+	"""
+	# Dilate to close small gaps between blob parts
+	kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (dilation_kernel_size, dilation_kernel_size))
+	dilated_mask = cv2.dilate(mask, kernel, iterations=1)
+	
+	# Perform connected component analysis on dilated mask
+	num_labels, labeled_mask = cv2.connectedComponents(dilated_mask, connectivity=8)
+	
+	blob_info = []
+	# num_labels includes background (label 0), so actual blobs are 1 to num_labels-1
+	for label in range(1, num_labels):
+		blob_mask = (labeled_mask == label).astype(np.uint8) * 255
+		area = cv2.countNonZero(blob_mask)
+		
+		# Find centroid
+		moments = cv2.moments(blob_mask)
+		if moments["m00"] > 0:
+			cx = int(moments["m10"] / moments["m00"])
+			cy = int(moments["m01"] / moments["m00"])
+		else:
+			cx, cy = 0, 0
+		
+		# Find bounding box
+		x, y, w, h = cv2.boundingRect(blob_mask)
+		
+		blob_info.append({
+			"label": label,
+			"area": area,
+			"centroid": (cx, cy),
+			"bbox": (x, y, w, h),
+		})
+	
+	return labeled_mask.astype(np.uint8), num_labels - 1, blob_info
+
+
+def colorize_blobs(labeled_mask: np.ndarray, num_blobs: int) -> np.ndarray:
+	"""
+	Colorize each blob with a different shade of blue.
+	
+	Returns:
+		- colored_image: RGB image with each blob colored differently
+	"""
+	# Create an empty RGB image
+	colored_image = np.zeros((labeled_mask.shape[0], labeled_mask.shape[1], 3), dtype=np.uint8)
+	
+	# Define a palette of blue shades (in BGR format for OpenCV)
+	# Each blob gets progressively darker or lighter blue
+	colors = []
+	for i in range(1, num_blobs + 1):
+		# Create variations of blue: hue stays around blue, vary saturation/value
+		ratio = i / (num_blobs + 1)
+		# Light to dark blue shades
+		blue = int(255 * (0.5 + 0.5 * ratio))
+		green = int(100 * ratio)
+		red = int(50 * ratio)
+		colors.append((blue, green, red))
+	
+	# Color each blob
+	for label in range(1, num_blobs + 1):
+		blob_mask = (labeled_mask == label)
+		colored_image[blob_mask] = colors[label - 1]
+	
+	return colored_image
+
+
 def rotate_filter_blue_and_save(
 	input_path: str,
 	output_path: str,
 	min_height_width_ratio: float = 1.8,
 	min_area: int = 80,
-) -> tuple[int, int]:
+) -> tuple[int, int, int, list[dict], np.ndarray]:
 	image = cv2.imread(input_path)
 	if image is None:
 		raise FileNotFoundError(f"Could not read image: {input_path}")
@@ -78,14 +156,21 @@ def rotate_filter_blue_and_save(
 		min_height_width_ratio=min_height_width_ratio,
 		min_area=min_area,
 	)
-	filtered = cv2.bitwise_and(rotated, rotated, mask=tall_blue_mask)
-
-	blue_pixel_count = int(cv2.countNonZero(tall_blue_mask))
-	saved = cv2.imwrite(output_path, filtered)
+	
+	# Cluster blobs to differentiate them
+	labeled_mask, num_blobs, blob_info = cluster_blobs(tall_blue_mask)
+	
+	# Colorize blobs
+	colored_blobs = colorize_blobs(labeled_mask, num_blobs)
+	
+	# Save colored visualization
+	saved = cv2.imwrite(output_path, colored_blobs)
 	if not saved:
 		raise RuntimeError(f"Failed to save image: {output_path}")
 
-	return blue_pixel_count, kept_regions
+	blue_pixel_count = int(cv2.countNonZero(tall_blue_mask))
+
+	return blue_pixel_count, kept_regions, num_blobs, blob_info, colored_blobs
 
 
 if __name__ == "__main__":
@@ -98,15 +183,24 @@ if __name__ == "__main__":
 	min_ratio = 1.8
 	min_area = 80
 
-	blue_pixels, kept_regions = rotate_filter_blue_and_save(
+	blue_pixels, kept_regions, num_blobs, blob_info, colored_image = rotate_filter_blue_and_save(
 		str(input_image),
 		str(output_image),
 		min_height_width_ratio=min_ratio,
 		min_area=min_area,
 	)
-	print(f"Saved tall-blue filtered image to: {output_image}")
+	print(f"Saved colored blob visualization to: {output_image}")
 	print(f"Detected blue pixels (tall only): {blue_pixels}")
 	print(f"Detected tall blue regions: {kept_regions}")
 	print(f"Used height/width ratio threshold: {min_ratio}")
 	print(f"Used minimum region area: {min_area}")
 	print(f"Using HSV bounds: {blue_hsv_bounds_from_samples()}")
+	print()
+	print(f"Clustered blobs found: {num_blobs}")
+	for i, blob in enumerate(blob_info, 1):
+		x, y, w, h = blob["bbox"]
+		cx, cy = blob["centroid"]
+		print(f"  Blob {i}:")
+		print(f"    Area: {blob['area']} pixels")
+		print(f"    Centroid: ({cx}, {cy})")
+		print(f"    Bounding box: x={x}, y={y}, width={w}, height={h}")
