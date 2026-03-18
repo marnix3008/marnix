@@ -59,7 +59,7 @@ enum navigation_state_t {
 float oa_free_threshold        = 30.f;  // danger score below which a slice is considered free (0-100)
 float oa_min_gap_width         = 2.f;   // minimum number of adjacent free slices to form a valid gap
 float oa_max_heading_increment = 5.f;   // maximum heading change per tick [deg]
-float maxDistance              = 1.0f;  // max waypoint displacement [m]
+float maxDistance              = 0.5f;  // max waypoint displacement [m]
 
 // State
 enum navigation_state_t navigation_state = SEARCH_FOR_SAFE_HEADING;
