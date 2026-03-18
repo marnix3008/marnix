@@ -60,6 +60,7 @@ float oa_free_threshold        = 30.f;  // danger score below which a slice is c
 float oa_min_gap_width         = 2.f;   // minimum number of adjacent free slices to form a valid gap
 float oa_max_heading_increment = 5.f;   // maximum heading change per tick [deg]
 float maxDistance              = 0.5f;  // max waypoint displacement [m]
+float flight_altitude          = 0.8f;  // target flight altitude above ground [m]
 
 // State
 enum navigation_state_t navigation_state = SEARCH_FOR_SAFE_HEADING;
@@ -98,6 +99,16 @@ void orange_avoider_init(void)
 {
   srand(time(NULL));
   AbiBindMsgPAYLOAD_DATA(OBSTACLE_DETECTION_ID, &slice_detection_ev, slice_detection_cb);
+  nav.fp_altitude = flight_altitude;  // apply default altitude on startup
+}
+
+/*
+ * Called by the GCS slider to update flight altitude immediately (no periodic overhead).
+ */
+void orange_avoider_set_altitude(float alt)
+{
+  flight_altitude  = alt;
+  nav.fp_altitude  = alt;
 }
 
 /*

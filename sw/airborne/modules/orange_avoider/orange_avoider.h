@@ -18,10 +18,12 @@ extern float oa_free_threshold;         // danger score below which a slice is f
 extern float oa_min_gap_width;          // minimum adjacent free slices to form a valid gap
 extern float oa_max_heading_increment;  // max heading change per tick [deg]
 extern float maxDistance;               // max waypoint displacement [m]
+extern float flight_altitude;           // target flight altitude above ground [m]
 
 // functions
 extern void orange_avoider_init(void);
 extern void orange_avoider_periodic(void);
+extern void orange_avoider_set_altitude(float alt);
 
 #endif
 
