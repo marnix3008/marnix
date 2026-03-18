@@ -51,13 +51,12 @@ static float   fallback_heading_increment(void);
 enum navigation_state_t {
   SAFE,
   OBSTACLE_FOUND,
-  SEARCH_FOR_SAFE_HEADING,
-  OUT_OF_BOUNDS
+  SEARCH_FOR_SAFE_HEADING
 };
 
 // Settings (tunable via datalink)
 float oa_free_threshold        = 30.f;  // danger score below which a slice is considered free (0-100)
-float oa_min_gap_width         = 2.f;   // minimum number of adjacent free slices to form a valid gap
+float oa_min_gap_width         = 6.f;   // minimum number of adjacent free slices to form a valid gap
 float oa_max_heading_increment = 5.f;   // maximum heading change per tick [deg]
 float maxDistance              = 0.5f;  // max waypoint displacement [m]
 
@@ -193,19 +192,17 @@ void orange_avoider_periodic(void)
     case SAFE:
       moveWaypointForward(WP_TRAJECTORY, 1.5f * moveDistance);
 
-      if (!InsideObstacleZone(WaypointX(WP_TRAJECTORY), WaypointY(WP_TRAJECTORY))) {
-        VERBOSE_PRINT("Trajectory out of arena bounds, turning back\n");
-        navigation_state = OUT_OF_BOUNDS;
-
-      } else if (!gap_found) {
+      if (!gap_found) {
         VERBOSE_PRINT("No safe gap found, stopping to find new heading\n");
         navigation_state = OBSTACLE_FOUND;
 
       } else {
-        // Only correct heading when the forward path (center third of slices) is becoming dangerous.
+        // Only correct heading when the forward path (middle 6 slices) is becoming dangerous.
         // This prevents jitter from peripheral noise when flying through open space.
         uint8_t forward_danger = 0;
-        for (int i = NUM_SLICES / 3; i < 2 * NUM_SLICES / 3; i++) {
+        int forward_start = (NUM_SLICES - 6) / 2;
+        int forward_end = forward_start + 6;
+        for (int i = forward_start; i < forward_end; i++) {
           if (slice_danger[i] > forward_danger) { forward_danger = slice_danger[i]; }
         }
         if (forward_danger >= (uint8_t)oa_free_threshold) {
@@ -261,18 +258,6 @@ void orange_avoider_periodic(void)
                         search_ticks, SEARCH_STUCK_TICKS, committed_heading_increment);
           increase_nav_heading(committed_heading_increment);
         }
-      }
-      break;
-
-    case OUT_OF_BOUNDS:
-      increase_nav_heading(oa_max_heading_increment);
-      moveWaypointForward(WP_TRAJECTORY, 1.5f);
-
-      if (InsideObstacleZone(WaypointX(WP_TRAJECTORY), WaypointY(WP_TRAJECTORY))) {
-        VERBOSE_PRINT("Back inside arena, resuming search for safe heading\n");
-        increase_nav_heading(oa_max_heading_increment);
-        obstacle_free_confidence = 0;
-        navigation_state = SEARCH_FOR_SAFE_HEADING;
       }
       break;
 
