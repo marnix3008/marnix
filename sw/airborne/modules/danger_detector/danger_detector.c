@@ -64,7 +64,7 @@
 
 uint8_t dd_lum_min        = 40;   /* minimum Y  – ignore very dark pixels   */
 uint8_t dd_lum_max        = 200;  /* maximum Y  – ignore overexposed pixels  */
-uint8_t dd_cb_max         = 110;  /* max Cb (U) for a pixel to be "green"   */
+uint8_t dd_cb_max         = 120;  /* max Cb (U) for a pixel to be "green"   */
 uint8_t dd_cr_max         = 140;  /* max Cr (V) for a pixel to be "green"   */
 float   dd_floor_strip_frac = 0.25f; /* left fraction of image width to inspect */
 bool    dd_draw           = true; /* overlay zone lines and danger colours   */
