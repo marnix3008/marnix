@@ -30,13 +30,16 @@
  *   - Cr (V, red chroma):  below dd_cr_max           (green has low red chroma)
  *
  * Results are available via the global danger_scores[] array and the
- * danger_detector_get_scores() helper.
+ * danger_detector_get_scores() helper. For ABI consumers (e.g.
+ * orange_avoider), this module now publishes per-zone blocked flags (0/1)
+ * based on dd_danger_threshold.
  *
  * NOTE: This module does NOT yet steer the drone – it only produces scores
  * that other modules can read.
  */
 
 #include "modules/danger_detector/danger_detector.h"
+#include "modules/danger_detector/grid_utils.h"
 #include "modules/computer_vision/cv.h"
 #include "modules/computer_vision/lib/vision/image.h"
 #include "modules/core/abi.h"
@@ -66,6 +69,7 @@ uint8_t dd_lum_min        = 40;   /* minimum Y  – ignore very dark pixels   */
 uint8_t dd_lum_max        = 200;  /* maximum Y  – ignore overexposed pixels  */
 uint8_t dd_cb_max         = 120;  /* max Cb (U) for a pixel to be "green"   */
 uint8_t dd_cr_max         = 140;  /* max Cr (V) for a pixel to be "green"   */
+uint8_t dd_danger_threshold = 30; /* score >= threshold is sent as blocked=1 */
 float   dd_floor_strip_frac = 0.25f; /* left fraction of image width to inspect */
 bool    dd_draw           = true; /* overlay zone lines and danger colours   */
 
@@ -181,9 +185,8 @@ static struct image_t *danger_detector_cb(struct image_t *img,
   memset(total,     0, sizeof(total));
 
   for (uint16_t row = 0; row < height; row++) {
-    /* Map row → zone index (0 = top band, NUM_ZONES-1 = bottom band). */
-    int zone = (int)((uint32_t)row * DANGER_DETECTOR_NUM_ZONES / height);
-    if (zone >= DANGER_DETECTOR_NUM_ZONES) { zone = DANGER_DETECTOR_NUM_ZONES - 1; }
+    /* Map row -> zone index (0 = top band, NUM_ZONES-1 = bottom band). */
+    uint8_t zone = cv_grid_zone_from_row(row, height, DANGER_DETECTOR_NUM_ZONES);
 
     for (uint16_t x = 0; x < strip_end; x++) {
       /* YUV422 (UYVY) layout – each macro-pixel pair is [U, Y0, V, Y1].
@@ -254,12 +257,7 @@ static struct image_t *danger_detector_cb(struct image_t *img,
 
     /* 2. Draw a full-width white horizontal line at each zone boundary. */
     static const uint8_t white[4] = {127, 255, 127, 255};
-    for (int z = 1; z < DANGER_DETECTOR_NUM_ZONES; z++) {
-      uint16_t y_line = (uint16_t)((uint32_t)height * (uint32_t)z / DANGER_DETECTOR_NUM_ZONES);
-      struct point_t from = {0,          y_line, 0, 0, 0};
-      struct point_t to   = {width - 1,  y_line, 0, 0, 0};
-      image_draw_line_color(img, &from, &to, white);
-    }
+    cv_grid_draw_horizontal_boundaries(img, DANGER_DETECTOR_NUM_ZONES, white);
 
     /* 3. Overlay danger score (0-100) centred in each zone, just right of
           the floor strip.  Colour indicates danger level:
@@ -273,8 +271,8 @@ static struct image_t *danger_detector_cb(struct image_t *img,
     for (int z = 0; z < DANGER_DETECTOR_NUM_ZONES; z++) {
       uint8_t score  = (total[z] == 0) ? 0u
                        : (uint8_t)((non_green[z] * 100u) / total[z]);
-      int zone_y0    = (int)((uint32_t)height * (uint32_t)z       / DANGER_DETECTOR_NUM_ZONES);
-      int zone_y1    = (int)((uint32_t)height * (uint32_t)(z + 1) / DANGER_DETECTOR_NUM_ZONES);
+      int zone_y0    = (int)cv_grid_zone_boundary_y(height, (uint8_t)z, DANGER_DETECTOR_NUM_ZONES);
+      int zone_y1    = (int)cv_grid_zone_boundary_y(height, (uint8_t)(z + 1), DANGER_DETECTOR_NUM_ZONES);
       int label_y    = (zone_y0 + zone_y1) / 2 - DD_DIGIT_H / 2;
       int label_x    = (int)strip_end + 4;
 
@@ -309,6 +307,8 @@ void danger_detector_init(void)
 
 void danger_detector_periodic(void)
 {
+  uint8_t danger_blocked[DANGER_DETECTOR_NUM_ZONES];
+
   /* Copy camera-thread results to the public array. */
   pthread_mutex_lock(&_mutex);
   if (_scores_updated) {
@@ -317,9 +317,14 @@ void danger_detector_periodic(void)
   }
   pthread_mutex_unlock(&_mutex);
 
-  /* Broadcast scores to other modules via ABI (consumed by orange_avoider). */
+  /* Convert score to blocked/free flags for ABI consumers. */
+  for (int z = 0; z < DANGER_DETECTOR_NUM_ZONES; z++) {
+    danger_blocked[z] = (danger_scores[z] >= dd_danger_threshold) ? 1u : 0u;
+  }
+
+  /* Broadcast blocked flags to other modules via ABI (consumed by orange_avoider). */
   AbiSendMsgPAYLOAD_DATA(DANGER_DETECTOR_SENDER_ID, 0, 1,
-                          DANGER_DETECTOR_NUM_ZONES, danger_scores);
+                          DANGER_DETECTOR_NUM_ZONES, danger_blocked);
 
   /* Print scores to stderr for debugging. */
 #ifdef DANGER_DETECTOR_VERBOSE
@@ -329,7 +334,7 @@ void danger_detector_periodic(void)
     const char *level = (s < 25) ? "low" :
                         (s < 50) ? "med" :
                         (s < 75) ? "high" : "CRIT";
-    fprintf(stderr, " %3u(%s)", s, level);
+    fprintf(stderr, " %3u(%s,%u)", s, level, danger_blocked[z]);
   }
   fprintf(stderr, "\n");
 #endif

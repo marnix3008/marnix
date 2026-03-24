@@ -7,9 +7,9 @@
 /**
  * @file "modules/orange_avoider/orange_avoider.c"
  * @author Roland Meertens
- * Modified for AE4317 course: 12-slice obstacle danger map navigation.
+ * Modified for AE4317 course: 12-slice obstacle map navigation.
  *
- * Receives a 12-element danger array (0-100 per slice) via PAYLOAD_DATA ABI.
+ * Receives a 12-element blocked/free array (0/1 per slice) via PAYLOAD_DATA ABI.
  * Each tick, finds the widest contiguous gap of free slices and steers toward
  * its center. Falls back to weighted-centroid turning when no valid gap exists.
  *
@@ -55,7 +55,6 @@ enum navigation_state_t {
 };
 
 // Settings (tunable via datalink)
-float oa_free_threshold        = 30.f;  // danger score below which a slice is considered free (0-100)
 float oa_min_gap_width         = 6.f;   // minimum number of adjacent free slices to form a valid gap
 float oa_max_heading_increment = 5.f;   // maximum heading change per tick [deg]
 float maxDistance              = 0.5f;  // max waypoint displacement [m]
@@ -70,8 +69,8 @@ static int16_t search_ticks = 0;           // ticks spent turning without findin
 
 const int16_t max_trajectory_confidence = 5;
 
-// Slice danger data: NUM_SLICES values (0-100), index 0 = leftmost column
-static uint8_t slice_danger[NUM_SLICES] = {0};
+// Slice occupancy data: NUM_SLICES values (0/1), index 0 = leftmost column
+static uint8_t slice_blocked[NUM_SLICES] = {0};
 
 #ifndef OBSTACLE_DETECTION_ID
 #define OBSTACLE_DETECTION_ID ABI_BROADCAST
@@ -85,7 +84,7 @@ static void slice_detection_cb(uint8_t __attribute__((unused)) sender_id,
 {
   if (data_type == 1 && size == NUM_SLICES) {
     for (int i = 0; i < NUM_SLICES; i++) {
-      slice_danger[i] = data[i];
+      slice_blocked[i] = (data[i] != 0u) ? 1u : 0u;
     }
   }
 }
@@ -110,7 +109,7 @@ static float find_best_gap(void)
   int run_start  = -1, run_width  = 0;
 
   for (int i = 0; i < NUM_SLICES; i++) {
-    if (slice_danger[i] < (uint8_t)oa_free_threshold) {
+    if (!slice_blocked[i]) {
       if (run_start == -1) { run_start = i; }
       run_width++;
     } else {
@@ -136,16 +135,16 @@ static float find_best_gap(void)
 }
 
 /*
- * Fallback when no gap is found: turn away from the side with more danger.
- * Uses the weighted centroid of danger across all slices.
- * If all slices are equally dangerous, defaults to a small right turn.
+ * Fallback when no gap is found: turn away from the side with more blocked slices.
+ * Uses the weighted centroid of blocked/free occupancy across all slices.
+ * If occupancy is symmetric, defaults to a small right turn.
  */
 static float fallback_heading_increment(void)
 {
   float weighted_sum = 0.f, total = 0.f;
   for (int i = 0; i < NUM_SLICES; i++) {
-    weighted_sum += slice_danger[i] * (i - CENTER_SLICE); // positive = right side
-    total        += slice_danger[i];
+    weighted_sum += (float)slice_blocked[i] * (i - CENTER_SLICE); // positive = right side
+    total        += (float)slice_blocked[i];
   }
   if (total < 1.f) {
     return oa_max_heading_increment; // default: small right turn
@@ -199,22 +198,25 @@ void orange_avoider_periodic(void)
       } else {
         // Only correct heading when the forward path (middle 6 slices) is becoming dangerous.
         // This prevents jitter from peripheral noise when flying through open space.
-        uint8_t forward_danger = 0;
+        bool forward_blocked = false;
         int forward_start = (NUM_SLICES - 6) / 2;
         int forward_end = forward_start + 6;
         for (int i = forward_start; i < forward_end; i++) {
-          if (slice_danger[i] > forward_danger) { forward_danger = slice_danger[i]; }
+          if (slice_blocked[i]) {
+            forward_blocked = true;
+            break;
+          }
         }
-        if (forward_danger >= (uint8_t)oa_free_threshold) {
+        if (forward_blocked) {
           // Path ahead is dangerous: turn in place only, do NOT move forward
           float offset = gap_center - CENTER_SLICE;
           float heading_correction = (offset / CENTER_SLICE) * oa_max_heading_increment;
-          VERBOSE_PRINT("Forward danger %d, turning toward gap at slice %.1f (correction %.1f deg) — holding position\n",
-                        forward_danger, gap_center, heading_correction);
+          VERBOSE_PRINT("Forward path blocked, turning toward gap at slice %.1f (correction %.1f deg) — holding position\n",
+                        gap_center, heading_correction);
           increase_nav_heading(heading_correction);
         } else {
           // Path clear: fly straight
-          VERBOSE_PRINT("Flying straight, forward path clear (danger %d)\n", forward_danger);
+          VERBOSE_PRINT("Flying straight, forward path clear\n");
           moveWaypointForward(WP_GOAL, moveDistance);
         }
       }

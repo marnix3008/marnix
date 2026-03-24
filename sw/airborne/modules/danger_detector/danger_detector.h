@@ -20,6 +20,8 @@
  *   75–100 critical (no floor visible)
  *
  * Results are stored in danger_scores[0..DANGER_DETECTOR_NUM_ZONES-1].
+ * ABI output to other modules is sent as per-zone blocked flags (0/1), where
+ * blocked is danger_scores[z] >= dd_danger_threshold.
  */
 
 #ifndef DANGER_DETECTOR_H
@@ -46,6 +48,7 @@ extern uint8_t dd_lum_min;
 extern uint8_t dd_lum_max;
 extern uint8_t dd_cb_max;   /* Cb below this value = green-ish (less blue)  */
 extern uint8_t dd_cr_max;   /* Cr below this value = green-ish (less red)   */
+extern uint8_t dd_danger_threshold; /* score >= threshold -> blocked flag = 1 */
 
 /** Fraction of the image WIDTH used as the floor detection strip (left side). */
 extern float dd_floor_strip_frac;

@@ -11,6 +11,10 @@ Danger_DETECTOR_NUM_ZONES horizontal bands (rows).
 Each zone receives a danger score 0 (safe/green floor) to 100 (fully blocked).
   0-24  = low, 25-49 = medium, 50-74 = high, 75-100 = critical
 
+For ABI consumers, danger scores are thresholded in this module and sent as
+blocked flags per zone: 0 = free, 1 = blocked.
+Threshold is set by dd_danger_threshold (default 30).
+
 Green floor pixels are detected using simple YUV thresholds.
 Results are stored in danger_scores[] and can be read by other modules via
 danger_detector_get_scores().
@@ -30,6 +34,7 @@ This module does NOT yet steer the drone – it only computes the scores.
         <dl_setting var="dd_lum_max"          min="0"    step="1"    max="255" shortname="Y_max"/>
         <dl_setting var="dd_cb_max"           min="0"    step="1"    max="255" shortname="Cb_max"/>
         <dl_setting var="dd_cr_max"           min="0"    step="1"    max="255" shortname="Cr_max"/>
+        <dl_setting var="dd_danger_threshold" min="0"    step="1"    max="100" shortname="danger_thr"/>
         <dl_setting var="dd_floor_strip_frac" min="0.05" step="0.05" max="0.5" shortname="strip_frac"/>
         <dl_setting var="dd_draw"             min="0"    step="1"    max="1"   shortname="draw" values="False|True"/>
       </dl_settings>
