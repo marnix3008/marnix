@@ -80,24 +80,17 @@
       <!-- Manual override: uncomment to force verbose ON regardless of target -->
       <!-- <define name="ORANGE_AVOIDER_VERBOSE" value="TRUE"/> -->
     </module>
-    <module name="cv_detect_gate">
-      <define name="DETECT_GATE_CAMERA" value="front_camera"/>
-      <define name="DETECT_GATE_FPS" value="0"/>
-      <define name="DETECT_GATE_MIN_N_SIDES" value="2"/>
-      <define name="DETECT_GATE_MIN_GATE_QUALITY" value="0.08"/>
-      <define name="DETECT_GATE_Y_MIN" value="20"/>
-      <define name="DETECT_GATE_Y_MAX" value="220"/>
-      <define name="DETECT_GATE_U_MIN" value="130"/>
-      <define name="DETECT_GATE_U_MAX" value="255"/>
-      <define name="DETECT_GATE_V_MIN" value="0"/>
-      <define name="DETECT_GATE_V_MAX" value="130"/>
-    </module>
     <module name="danger_detector">
       <define name="DANGER_DETECTOR_CAMERA" value="front_camera"/>
       <define name="DANGER_DETECTOR_FPS" value="0"/>
       <define name="DANGER_DETECTOR_NUM_ZONES" value="12"/>
       <define name="DANGER_DETECTOR_SENDER_ID" value="1"/><!-- must match OBSTACLE_DETECTION_ID -->
       <!-- <define name="DANGER_DETECTOR_VERBOSE"/> -->
+    </module>
+    <module name="gate_detector">
+      <define name="GATE_DETECTOR_CAMERA" value="front_camera"/>
+      <define name="GATE_DETECTOR_FPS" value="0"/>
+      <!-- <define name="GATE_DETECTOR_VERBOSE"/> -->
     </module>
     <module name="video_rtp_stream">
       <define name="VIEWVIDEO_CAMERA" value="front_camera"/>
