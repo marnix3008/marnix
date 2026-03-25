@@ -46,6 +46,7 @@ extern uint8_t dd_lum_min;
 extern uint8_t dd_lum_max;
 extern uint8_t dd_cb_max;   /* Cb below this value = green-ish (less blue)  */
 extern uint8_t dd_cr_max;   /* Cr below this value = green-ish (less red)   */
+extern uint8_t dd_lower_res_step; /* lower-half x-step: 1=full, 2=half, 4=quarter */
 
 /** Fraction of the image WIDTH used as the floor detection strip (left side). */
 extern float dd_floor_strip_frac;

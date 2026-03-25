@@ -67,6 +67,7 @@ uint8_t dd_lum_max        = 200;  /* maximum Y  – ignore overexposed pixels  *
 uint8_t dd_cb_max         = 120;  /* max Cb (U) for a pixel to be "green"   */
 uint8_t dd_cr_max         = 140;  /* max Cr (V) for a pixel to be "green"   */
 float   dd_floor_strip_frac = 0.25f; /* left fraction of image width to inspect */
+uint8_t dd_lower_res_step = 2;    /* lower-half x-step: 1=full, 2=half, 4=quarter */
 bool    dd_draw           = true; /* overlay zone lines and danger colours   */
 
 /* -------------------------------------------------------------------------
@@ -180,28 +181,41 @@ static struct image_t *danger_detector_cb(struct image_t *img,
   memset(non_green, 0, sizeof(non_green));
   memset(total,     0, sizeof(total));
 
+  uint8_t sample_step = (dd_lower_res_step == 0u) ? 1u : dd_lower_res_step;
+  bool draw_enabled = dd_draw;
+
   for (uint16_t row = 0; row < height; row++) {
     /* Map row → zone index (0 = top band, NUM_ZONES-1 = bottom band). */
     int zone = (int)((uint32_t)row * DANGER_DETECTOR_NUM_ZONES / height);
     if (zone >= DANGER_DETECTOR_NUM_ZONES) { zone = DANGER_DETECTOR_NUM_ZONES - 1; }
 
-    for (uint16_t x = 0; x < strip_end; x++) {
-      /* YUV422 (UYVY) layout – each macro-pixel pair is [U, Y0, V, Y1].
-       * Even x → first pixel of pair; odd x → second pixel of pair. */
+    uint32_t row_base = (uint32_t)row * 2u * width;
+
+    /* Apply the same sampling policy over the full strip to avoid left/right asymmetry. */
+    for (uint16_t x = 0; x < strip_end; x = (uint16_t)(x + sample_step)) {
+      uint16_t x_pair = (uint16_t)(x & ~1u);
+      uint32_t base_pair = row_base + 2u * x_pair;
       uint8_t y_val, cb_val, cr_val;
-      if (x % 2 == 0) {
-        cb_val = buf[row * 2u * width + 2u * x];
-        y_val  = buf[row * 2u * width + 2u * x + 1];
-        cr_val = buf[row * 2u * width + 2u * x + 2];
+      if ((x & 1u) == 0u) {
+        cb_val = buf[base_pair];
+        y_val  = buf[base_pair + 1u];
+        cr_val = buf[base_pair + 2u];
       } else {
-        cb_val = buf[row * 2u * width + 2u * x - 2];
-        y_val  = buf[row * 2u * width + 2u * x + 1];
-        cr_val = buf[row * 2u * width + 2u * x];
+        uint32_t base_odd = row_base + 2u * x;
+        cb_val = buf[base_pair];
+        y_val  = buf[base_odd + 1u];
+        cr_val = buf[base_pair + 2u];
       }
 
+      bool is_green = is_green_yuv(y_val, cb_val, cr_val);
       total[zone]++;
-      if (!is_green_yuv(y_val, cb_val, cr_val)) {
+      if (!is_green) {
         non_green[zone]++;
+      }
+
+      if (draw_enabled) {
+        buf[base_pair + 0u] = is_green ? 44u : 85u;
+        buf[base_pair + 2u] = is_green ? 21u : 255u;
       }
     }
   }
@@ -231,28 +245,7 @@ static struct image_t *danger_detector_cb(struct image_t *img,
    *   white  = {127, 127}  (separator line)
    * ---------------------------------------------------------------- */
   if (dd_draw) {
-    uint8_t *dbuf = (uint8_t *)img->buf;
-
-    /* 1. Tint the left strip pixel-by-pixel.  Step by 2 in x so we process
-          one UYVY macro-pixel [U, Y0, V, Y1] at a time. */
-    for (uint16_t row = 0; row < height; row++) {
-      for (uint16_t x = 0; x < strip_end; x += 2) {
-        uint32_t base  = (uint32_t)row * 2u * width + 2u * x;
-        uint8_t  cb    = dbuf[base];       /* U (Cb) */
-        uint8_t  y0    = dbuf[base + 1];   /* Y of first pixel  */
-        uint8_t  cr    = dbuf[base + 2];   /* V (Cr) */
-
-        bool is_green0 = is_green_yuv(y0, cb, cr);
-
-        /* Same U/V slot covers both x and x+1, so one tint per pair. */
-        dbuf[base + 0] = is_green0 ? 44u : 85u;   /* U (Cb) */
-        if (x + 1 < strip_end) {
-          dbuf[base + 2] = is_green0 ? 21u : 255u; /* V (Cr) */
-        }
-      }
-    }
-
-    /* 2. Draw a full-width white horizontal line at each zone boundary. */
+    /* 1. Draw a full-width white horizontal line at each zone boundary. */
     static const uint8_t white[4] = {127, 255, 127, 255};
     for (int z = 1; z < DANGER_DETECTOR_NUM_ZONES; z++) {
       uint16_t y_line = (uint16_t)((uint32_t)height * (uint32_t)z / DANGER_DETECTOR_NUM_ZONES);
@@ -261,7 +254,7 @@ static struct image_t *danger_detector_cb(struct image_t *img,
       image_draw_line_color(img, &from, &to, white);
     }
 
-    /* 3. Overlay danger score (0-100) centred in each zone, just right of
+    /* 2. Overlay danger score (0-100) centred in each zone, just right of
           the floor strip.  Colour indicates danger level:
             green  = low     (score  0-24)
             yellow = medium  (score 25-49)
