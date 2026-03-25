@@ -83,7 +83,7 @@ volatile int detect_gate_x_max_px __attribute__((weak)) = 0;
 volatile int detect_gate_img_width __attribute__((weak)) = 0;
 
 // Gate approach settings (tunable via datalink)
-float gate_y_gain          = 0.5f;  // heading correction per meter of lateral gate offset [deg/m]
+float gate_y_gain          = 1.0f;  // scales bearing-angle correction to gate center [dimensionless]
 float gate_traverse_dist   = 1.5f;  // distance [m] at which to trigger GATE_TRAVERSE
 float gate_detect_max_dist = 6.0f;  // max gate distance [m] to accept as valid detection
 int   gate_stale_ticks     = 8;     // ticks (~2s at 4Hz) before aborting approach on lost gate
@@ -94,10 +94,7 @@ static float gate_x = 0.f;         // forward distance to gate (sign: verify in 
 static float gate_y = 0.f;         // lateral offset (positive = drone right of gate center)
 static bool  gate_has_data = false; // set by ABI callback, cleared each periodic tick
 
-// Gate ABI subscription (RELATIVE_LOCALIZATION from DETECT_GATE_ABI_ID)
-#ifndef DETECT_GATE_ABI_ID
-#define DETECT_GATE_ABI_ID 33
-#endif
+// Gate ABI subscription (RELATIVE_LOCALIZATION, broadcast to catch any sender)
 static abi_event gate_detect_ev;
 static void gate_detect_cb(uint8_t sender_id     __attribute__((unused)),
                             int32_t id            __attribute__((unused)),
@@ -139,7 +136,7 @@ void orange_avoider_init(void)
 {
   srand(time(NULL));
   AbiBindMsgPAYLOAD_DATA(OBSTACLE_DETECTION_ID, &slice_detection_ev, slice_detection_cb);
-  AbiBindMsgRELATIVE_LOCALIZATION(DETECT_GATE_ABI_ID, &gate_detect_ev, gate_detect_cb);
+  AbiBindMsgRELATIVE_LOCALIZATION(ABI_BROADCAST, &gate_detect_ev, gate_detect_cb);
 }
 
 /*
@@ -358,10 +355,13 @@ void orange_avoider_periodic(void)
         VERBOSE_PRINT("GATE_APPROACH: masked slices [%d-%d]\n", smin, smax);
       }
 
-      // Steer heading toward gate center.
-      // gate_y > 0 means drone is to the right of gate center → gate appears left → turn left.
-      // VERIFY SIGN IN SIMULATION — flip gate_y_gain sign via GCS if steering is reversed.
-      float correction = -gate_y * gate_y_gain;
+      // Steer heading toward gate center using bearing angle.
+      // Bearing to gate: if drone is right of gate center (gate_y > 0), gate is to the left
+      //                  → negative bearing → turn left (negative increment). Correct.
+      // gate_y_gain scales the bearing response: 1.0 = direct bearing proportional control.
+      // VERIFY SIGN IN SIMULATION — negate gate_y_gain via GCS if steering is reversed.
+      float bearing_deg = DegOfRad(atan2f(-gate_y, fabsf(gate_x)));
+      float correction = bearing_deg * gate_y_gain;
       if (correction >  oa_max_heading_increment) { correction =  oa_max_heading_increment; }
       if (correction < -oa_max_heading_increment) { correction = -oa_max_heading_increment; }
       increase_nav_heading(correction);
