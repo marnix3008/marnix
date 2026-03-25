@@ -20,10 +20,9 @@ extern float oa_max_heading_increment;  // max heading change per tick [deg]
 extern float maxDistance;               // max waypoint displacement [m]
 
 // gate approach settings
-extern float gate_y_gain;           // heading correction gain [deg/m of lateral offset]
-extern float gate_traverse_dist;    // distance [m] to trigger GATE_TRAVERSE
-extern float gate_detect_max_dist;  // max gate detection range [m]
-extern int   gate_stale_ticks;      // ticks before aborting lost-gate approach
+extern float gate_y_gain;       // heading correction gain (pixel-normalized, scales oa_max_heading_increment)
+extern int   gate_close_px;     // gate_width threshold [px] to trigger GATE_TRAVERSE
+extern int   gate_stale_ticks;  // ticks before aborting lost-gate approach
 
 // functions
 extern void orange_avoider_init(void);

@@ -17,10 +17,9 @@ Set OBSTACLE_DETECTION_ID to match the sender ID used by the vision module.
         <dl_setting var="oa_min_gap_width"         min="1"   step="1"   max="6"   shortname="min_gap"/>
         <dl_setting var="oa_max_heading_increment" min="1"   step="0.5" max="15"  shortname="head_inc"/>
         <dl_setting var="maxDistance"              min="0.5" step="0.1" max="5"   shortname="max_dist"/>
-        <dl_setting var="gate_y_gain"          min="-3.0" step="0.1" max="3.0" shortname="gate_ygain"/>
-        <dl_setting var="gate_traverse_dist"   min="0.5"  step="0.1" max="3.0" shortname="gate_dist"/>
-        <dl_setting var="gate_detect_max_dist" min="1.0"  step="0.5" max="10.0" shortname="gate_maxd"/>
-        <dl_setting var="gate_stale_ticks"     min="2"    step="1"   max="20"  shortname="gate_stale"/>
+        <dl_setting var="gate_y_gain"      min="-3.0" step="0.1" max="3.0" shortname="gate_ygain"/>
+        <dl_setting var="gate_close_px"    min="20"   step="5"   max="220" shortname="gate_close"/>
+        <dl_setting var="gate_stale_ticks" min="2"    step="1"   max="20"  shortname="gate_stale"/>
         <!-- <dl_setting var="oa_free_threshold"        min="0"   step="1"   max="100" shortname="free_thr" description="Danger score below which a slice is free (0-100)"/>
         <dl_setting var="oa_min_gap_width"         min="1"   step="1"   max="6"   shortname="min_gap"  description="Minimum adjacent free slices for a valid gap"/>
         <dl_setting var="oa_max_heading_increment" min="1"   step="0.5" max="15"  shortname="head_inc" description="Max heading change per tick [deg]"/>
