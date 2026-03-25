@@ -75,6 +75,13 @@ static int16_t search_ticks = 0;           // ticks spent turning without findin
 
 const int16_t max_trajectory_confidence = 5;
 
+// Weak fallback definitions for detect_gate pixel bounds.
+// When cv_detect_gate module IS compiled its strong definitions win.
+// When it is NOT compiled these fallbacks (all 0) disable masking gracefully.
+volatile int detect_gate_x_min_px __attribute__((weak)) = 0;
+volatile int detect_gate_x_max_px __attribute__((weak)) = 0;
+volatile int detect_gate_img_width __attribute__((weak)) = 0;
+
 // Gate approach settings (tunable via datalink)
 float gate_y_gain          = 0.5f;  // heading correction per meter of lateral gate offset [deg/m]
 float gate_traverse_dist   = 1.5f;  // distance [m] at which to trigger GATE_TRAVERSE
