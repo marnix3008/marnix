@@ -116,7 +116,10 @@ static float find_best_gap(void)
       if (run_start == -1) { run_start = i; }
       run_width++;
     } else {
-      if (run_width > best_width) {
+      if (run_width > best_width ||
+          (run_width == best_width && best_start != -1 &&
+           fabsf(run_start + (run_width - 1) / 2.f - CENTER_SLICE) <
+           fabsf(best_start + (best_width - 1) / 2.f - CENTER_SLICE))) {
         best_width = run_width;
         best_start = run_start;
       }
@@ -125,7 +128,10 @@ static float find_best_gap(void)
     }
   }
   // check the last run
-  if (run_width > best_width) {
+  if (run_width > best_width ||
+      (run_width == best_width && best_start != -1 &&
+       fabsf(run_start + (run_width - 1) / 2.f - CENTER_SLICE) <
+       fabsf(best_start + (best_width - 1) / 2.f - CENTER_SLICE))) {
     best_width = run_width;
     best_start = run_start;
   }
