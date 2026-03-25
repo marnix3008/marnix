@@ -116,6 +116,10 @@ volatile int detect_gate_has_new_data;
 volatile float detect_gate_x;
 volatile float detect_gate_y;
 volatile float detect_gate_z;
+// Pixel bounds of detected gate (for slice masking in orange_avoider)
+volatile int detect_gate_x_min_px;
+volatile int detect_gate_x_max_px;
+volatile int detect_gate_img_width;
 
 static pthread_mutex_t gate_detect_mutex;            ///< Mutex lock fo thread safety
 
@@ -252,7 +256,15 @@ static struct image_t *detect_gate_func(struct image_t *img, uint8_t camera_id _
       detect_gate_x = drone_position.x;
       detect_gate_y = drone_position.y;
       detect_gate_z = drone_position.z;
-      //printf("new measurement!!\n");
+      // Compute pixel bounding box for slice masking
+      int xmin = best_gate.x_corners[0], xmax = best_gate.x_corners[0];
+      for (int ci = 1; ci < 4; ci++) {
+        if (best_gate.x_corners[ci] < xmin) { xmin = best_gate.x_corners[ci]; }
+        if (best_gate.x_corners[ci] > xmax) { xmax = best_gate.x_corners[ci]; }
+      }
+      detect_gate_x_min_px = xmin;
+      detect_gate_x_max_px = xmax;
+      detect_gate_img_width = img->w;
       detect_gate_has_new_data = true;
       pthread_mutex_unlock(&gate_detect_mutex);
     }

@@ -24,8 +24,10 @@
 #include "generated/flight_plan.h"
 #include "state.h"
 #include "modules/core/abi.h"
+#include "modules/computer_vision/detect_gate.h"
 #include <time.h>
 #include <stdio.h>
+#include <math.h>
 
 #ifndef ORANGE_AVOIDER_VERBOSE
 #define ORANGE_AVOIDER_VERBOSE TRUE   // set FALSE in airframe XML to disable on the real drone
@@ -52,7 +54,9 @@ enum navigation_state_t {
   SAFE,
   OBSTACLE_FOUND,
   SEARCH_FOR_SAFE_HEADING,
-  OUT_OF_BOUNDS
+  OUT_OF_BOUNDS,
+  GATE_APPROACH,
+  GATE_TRAVERSE   // placeholder, not yet implemented
 };
 
 // Settings (tunable via datalink)
@@ -70,6 +74,36 @@ static int16_t search_ticks = 0;           // ticks spent turning without findin
 #define SEARCH_STUCK_JUMP_DEG 90.f         // degrees for the jump turn
 
 const int16_t max_trajectory_confidence = 5;
+
+// Gate approach settings (tunable via datalink)
+float gate_y_gain          = 0.5f;  // heading correction per meter of lateral gate offset [deg/m]
+float gate_traverse_dist   = 1.5f;  // distance [m] at which to trigger GATE_TRAVERSE
+float gate_detect_max_dist = 6.0f;  // max gate distance [m] to accept as valid detection
+int   gate_stale_ticks     = 8;     // ticks (~2s at 4Hz) before aborting approach on lost gate
+
+// Gate approach state
+static int   gate_stale_counter = 0;
+static float gate_x = 0.f;         // forward distance to gate (sign: verify in simulation)
+static float gate_y = 0.f;         // lateral offset (positive = drone right of gate center)
+static bool  gate_has_data = false; // set by ABI callback, cleared each periodic tick
+
+// Gate ABI subscription (RELATIVE_LOCALIZATION from DETECT_GATE_ABI_ID)
+#ifndef DETECT_GATE_ABI_ID
+#define DETECT_GATE_ABI_ID 33
+#endif
+static abi_event gate_detect_ev;
+static void gate_detect_cb(uint8_t sender_id     __attribute__((unused)),
+                            int32_t id            __attribute__((unused)),
+                            float x, float y,
+                            float z               __attribute__((unused)),
+                            float vx              __attribute__((unused)),
+                            float vy              __attribute__((unused)),
+                            float vz              __attribute__((unused)))
+{
+  gate_x = x;
+  gate_y = y;
+  gate_has_data = true;
+}
 
 // Slice danger data: NUM_SLICES values (0-100), index 0 = leftmost column
 static uint8_t slice_danger[NUM_SLICES] = {0};
@@ -98,6 +132,7 @@ void orange_avoider_init(void)
 {
   srand(time(NULL));
   AbiBindMsgPAYLOAD_DATA(OBSTACLE_DETECTION_ID, &slice_detection_ev, slice_detection_cb);
+  AbiBindMsgRELATIVE_LOCALIZATION(DETECT_GATE_ABI_ID, &gate_detect_ev, gate_detect_cb);
 }
 
 /*
@@ -191,6 +226,18 @@ void orange_avoider_periodic(void)
   switch (navigation_state) {
 
     case SAFE:
+      // Gate detection: transition to approach if gate is valid and visible
+      if (gate_has_data) {
+        gate_has_data = false;
+        float gate_dist = fabsf(gate_x);
+        if (gate_dist > 0.3f && gate_dist < gate_detect_max_dist) {
+          VERBOSE_PRINT("GATE detected at dist=%.2f y=%.2f, entering GATE_APPROACH\n", gate_dist, gate_y);
+          gate_stale_counter = 0;
+          navigation_state = GATE_APPROACH;
+          break;
+        }
+      }
+
       moveWaypointForward(WP_TRAJECTORY, 1.5f * moveDistance);
 
       if (!InsideObstacleZone(WaypointX(WP_TRAJECTORY), WaypointY(WP_TRAJECTORY))) {
@@ -274,6 +321,70 @@ void orange_avoider_periodic(void)
         obstacle_free_confidence = 0;
         navigation_state = SEARCH_FOR_SAFE_HEADING;
       }
+      break;
+
+    case GATE_APPROACH: {
+      // Consume gate data flag; track staleness
+      if (gate_has_data) {
+        gate_has_data = false;
+        gate_stale_counter = 0;
+      } else {
+        gate_stale_counter++;
+        if (gate_stale_counter > gate_stale_ticks) {
+          VERBOSE_PRINT("GATE_APPROACH: gate lost (%d ticks), returning to SAFE\n", gate_stale_counter);
+          navigation_state = SAFE;
+          break;
+        }
+      }
+
+      // Build masked danger array: zero slices covered by the gate's horizontal footprint.
+      // The gate's bottom bar blocks floor view in those columns → false danger spikes.
+      // We remove that contribution so the forward-path check does not block gate approach.
+      uint8_t masked[NUM_SLICES];
+      for (int i = 0; i < NUM_SLICES; i++) { masked[i] = slice_danger[i]; }
+      if (detect_gate_img_width > 0) {
+        int smin = (detect_gate_x_min_px * NUM_SLICES) / detect_gate_img_width;
+        int smax = (detect_gate_x_max_px * NUM_SLICES) / detect_gate_img_width;
+        if (smin < 0) { smin = 0; } if (smin > NUM_SLICES - 1) { smin = NUM_SLICES - 1; }
+        if (smax < 0) { smax = 0; } if (smax > NUM_SLICES - 1) { smax = NUM_SLICES - 1; }
+        for (int i = smin; i <= smax; i++) { masked[i] = 0; }
+        VERBOSE_PRINT("GATE_APPROACH: masked slices [%d-%d]\n", smin, smax);
+      }
+
+      // Steer heading toward gate center.
+      // gate_y > 0 means drone is to the right of gate center → gate appears left → turn left.
+      // VERIFY SIGN IN SIMULATION — flip gate_y_gain sign via GCS if steering is reversed.
+      float correction = -gate_y * gate_y_gain;
+      if (correction >  oa_max_heading_increment) { correction =  oa_max_heading_increment; }
+      if (correction < -oa_max_heading_increment) { correction = -oa_max_heading_increment; }
+      increase_nav_heading(correction);
+
+      // Forward motion: check center-third of masked danger array
+      uint8_t forward_danger = 0;
+      for (int i = NUM_SLICES / 3; i < 2 * NUM_SLICES / 3; i++) {
+        if (masked[i] > forward_danger) { forward_danger = masked[i]; }
+      }
+      if (forward_danger < (uint8_t)oa_free_threshold) {
+        moveWaypointForward(WP_GOAL, maxDistance);
+      } else {
+        waypoint_move_here_2d(WP_GOAL);  // obstacle in path — rotate only
+      }
+
+      float gate_dist = fabsf(gate_x);
+      VERBOSE_PRINT("GATE_APPROACH: dist=%.2f y=%.2f fwd_danger=%d stale=%d\n",
+                    gate_dist, gate_y, forward_danger, gate_stale_counter);
+
+      // Placeholder: transition to GATE_TRAVERSE when close enough (not yet implemented)
+      if (gate_dist < gate_traverse_dist) {
+        VERBOSE_PRINT("GATE_APPROACH: close enough (%.2fm) — GATE_TRAVERSE not yet implemented\n", gate_dist);
+        // navigation_state = GATE_TRAVERSE;
+      }
+      break;
+    }
+
+    case GATE_TRAVERSE:
+      // Not yet implemented
+      navigation_state = SAFE;
       break;
 
     default:

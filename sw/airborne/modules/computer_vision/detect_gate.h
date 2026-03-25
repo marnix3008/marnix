@@ -34,5 +34,15 @@ extern int exclude_bottom;
 extern struct FloatVect3 drone_position;
 extern struct gate_img best_gate;
 
+// Shared state from detection thread (set under gate_detect_mutex)
+extern volatile int   detect_gate_has_new_data;
+extern volatile float detect_gate_x;
+extern volatile float detect_gate_y;
+extern volatile float detect_gate_z;
+// Pixel bounding box of detected gate (for slice masking)
+extern volatile int   detect_gate_x_min_px;
+extern volatile int   detect_gate_x_max_px;
+extern volatile int   detect_gate_img_width;
+
 
 #endif /* DETECT_GATE_MODULE_H */
