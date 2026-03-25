@@ -67,7 +67,7 @@ int16_t obstacle_free_confidence = 0;
 float   committed_heading_increment = 0.f; // heading increment committed on entering SEARCH state
 static int16_t search_ticks = 0;           // ticks spent turning without finding a gap
 #define SEARCH_STUCK_TICKS    3            // after this many failed ticks, do a big jump turn
-#define SEARCH_STUCK_JUMP_DEG 40.f         // degrees for the jump turn
+#define SEARCH_STUCK_JUMP_DEG 90.f         // degrees for the jump turn
 
 const int16_t max_trajectory_confidence = 5;
 
