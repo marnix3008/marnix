@@ -24,6 +24,7 @@
 #include "generated/flight_plan.h"
 #include "state.h"
 #include "modules/core/abi.h"
+#include <math.h>
 #include <time.h>
 #include <stdio.h>
 
@@ -39,7 +40,7 @@
 #endif
 
 #define NUM_SLICES   12 // Number of vertical slices, must match the vision module
-#define CENTER_SLICE 5.5f   // (NUM_SLICES - 1) / 2.0, ADJUST MANUALLY IF NUM_SLICES CHANGES
+#define CENTER_SLICE ((NUM_SLICES - 1) / 2.0f)
 
 static uint8_t moveWaypointForward(uint8_t waypoint, float distanceMeters);
 static uint8_t calculateForwards(struct EnuCoor_i *new_coor, float distanceMeters);
@@ -111,7 +112,7 @@ static float find_best_gap(void)
   int run_start  = -1, run_width  = 0;
 
   for (int i = 0; i < NUM_SLICES; i++) {
-    if (slice_danger[i] < (uint8_t)oa_free_threshold) {
+    if (slice_danger[i] < (uint8_t)roundf(oa_free_threshold)) {
       if (run_start == -1) { run_start = i; }
       run_width++;
     } else {
@@ -129,7 +130,7 @@ static float find_best_gap(void)
     best_start = run_start;
   }
 
-  if (best_start == -1 || best_width < (int)oa_min_gap_width) {
+  if (best_start == -1 || best_width < (int)roundf(oa_min_gap_width)) {
     return -1.f;
   }
 
@@ -208,7 +209,7 @@ void orange_avoider_periodic(void)
         for (int i = NUM_SLICES / 3; i < 2 * NUM_SLICES / 3; i++) {
           if (slice_danger[i] > forward_danger) { forward_danger = slice_danger[i]; }
         }
-        if (forward_danger >= (uint8_t)oa_free_threshold) {
+        if (forward_danger >= (uint8_t)roundf(oa_free_threshold)) {
           // Path ahead is dangerous: turn in place only, do NOT move forward
           float offset = gap_center - CENTER_SLICE;
           float heading_correction = (offset / CENTER_SLICE) * oa_max_heading_increment;
