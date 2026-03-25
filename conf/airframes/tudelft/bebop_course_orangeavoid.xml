@@ -81,6 +81,15 @@
       <define name="DANGER_DETECTOR_SENDER_ID" value="1"/><!-- must match OBSTACLE_DETECTION_ID -->
       <!-- <define name="DANGER_DETECTOR_VERBOSE"/> -->
     </module>
+    <module name="horizon_detector">
+      <define name="HORIZON_DETECTOR_CAMERA" value="front_camera"/>
+      <define name="HORIZON_DETECTOR_FPS" value="0"/>
+      <define name="HORIZON_DETECTOR_NUM_ZONES" value="12"/>
+      <define name="HORIZON_DETECTOR_SENDER_ID" value="2"/>
+      <define name="HORIZON_DETECTOR_DATA_TYPE" value="2"/>
+      <define name="HORIZON_DETECTOR_DRAW" value="1"/><!-- set to 0 to disable overlay -->
+      <define name="HORIZON_DETECTOR_VERBOSE"/>
+    </module>
     <module name="video_rtp_stream">
       <define name="VIEWVIDEO_CAMERA" value="front_camera"/>
       <define name="VIEWVIDEO_CAMERA2" value="bottom_camera"/>

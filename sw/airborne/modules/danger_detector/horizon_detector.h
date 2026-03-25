@@ -31,6 +31,10 @@ extern uint8_t hh_green_max;                 /* green channel upper bound */
 extern uint8_t hh_red_min;                   /* red channel lower bound */
 extern int8_t  hh_green_minus_blue_min;      /* (G - B) lower bound */
 extern int8_t  hh_green_minus_red_min;       /* (G - R) lower bound */
+extern uint8_t hh_luma_min;                  /* Y lower bound for green floor */
+extern uint8_t hh_luma_max;                  /* Y upper bound for green floor */
+extern uint8_t hh_cb_max;                    /* Cb upper bound for green floor */
+extern uint8_t hh_cr_max;                    /* Cr upper bound for green floor */
 extern float   hh_floor_strip_frac;          /* min valid x = width * fraction */
 extern float   hh_invalid_percent_threshold; /* per-zone invalid percentage threshold */
 extern float   hh_max_slope;                 /* |dx/dy| threshold */

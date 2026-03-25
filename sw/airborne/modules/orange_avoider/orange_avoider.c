@@ -9,16 +9,16 @@
  * @author Roland Meertens
  * Modified for AE4317 course: 12-slice obstacle map navigation.
  *
- * Receives a 12-element blocked/free array (0/1 per slice) via PAYLOAD_DATA ABI.
+ * Receives per-zone blocked/free arrays (0/1) from danger_detector and
+ * horizon_detector via PAYLOAD_DATA ABI.
+ * A slice is marked blocked only if both detectors report danger in that slice.
  * Each tick, finds the widest contiguous gap of free slices and steers toward
  * its center. Falls back to weighted-centroid turning when no valid gap exists.
- *
- * The OBSTACLE_DETECTION_ID define must match the sender ID used by the vision
- * module. Set it in your airframe XML:
- *   <define name="OBSTACLE_DETECTION_ID" value="1"/>
  */
 
 #include "modules/orange_avoider/orange_avoider.h"
+#include "modules/danger_detector/danger_detector.h"
+#include "modules/danger_detector/horizon_detector.h"
 #include "firmwares/rotorcraft/navigation.h"
 #include "generated/airframe.h"
 #include "generated/flight_plan.h"
@@ -71,21 +71,51 @@ const int16_t max_trajectory_confidence = 5;
 
 // Slice occupancy data: NUM_SLICES values (0/1), index 0 = leftmost column
 static uint8_t slice_blocked[NUM_SLICES] = {0};
+static uint8_t danger_blocked[NUM_SLICES] = {0};
+static uint8_t horizon_blocked[NUM_SLICES] = {0};
 
-#ifndef OBSTACLE_DETECTION_ID
-#define OBSTACLE_DETECTION_ID ABI_BROADCAST
-#endif
-static abi_event slice_detection_ev;
-static void slice_detection_cb(uint8_t __attribute__((unused)) sender_id,
-                                uint32_t __attribute__((unused)) stamp,
-                                int32_t data_type,
-                                uint32_t size,
-                                uint8_t *data)
+static abi_event danger_detection_ev;
+static abi_event horizon_detection_ev;
+
+static void update_blocked_fused(void)
 {
-  if (data_type == 1 && size == NUM_SLICES) {
-    for (int i = 0; i < NUM_SLICES; i++) {
-      slice_blocked[i] = (data[i] != 0u) ? 1u : 0u;
+  for (int i = 0; i < NUM_SLICES; i++) {
+    slice_blocked[i] = (danger_blocked[i] && horizon_blocked[i]) ? 1u : 0u;
+  }
+}
+
+static void copy_flags_to_slices(uint8_t *dst, uint8_t *src, uint32_t src_size)
+{
+  if (!dst || !src || src_size == 0u) {
+    return;
+  }
+
+  for (int i = 0; i < NUM_SLICES; i++) {
+    uint32_t idx = ((uint32_t)i * src_size) / (uint32_t)NUM_SLICES;
+    if (idx >= src_size) {
+      idx = src_size - 1u;
     }
+    dst[i] = (src[idx] != 0u) ? 1u : 0u;
+  }
+}
+
+static void slice_detection_cb(uint8_t sender_id,
+                               uint32_t __attribute__((unused)) stamp,
+                               int32_t data_type,
+                               uint32_t size,
+                               uint8_t *data)
+{
+  if (!data || size == 0u) {
+    return;
+  }
+
+  if ((sender_id == DANGER_DETECTOR_SENDER_ID) && (data_type == 1)) {
+    copy_flags_to_slices(danger_blocked, data, size);
+    update_blocked_fused();
+  } else if ((sender_id == HORIZON_DETECTOR_SENDER_ID) &&
+             (data_type == HORIZON_DETECTOR_DATA_TYPE)) {
+    copy_flags_to_slices(horizon_blocked, data, size);
+    update_blocked_fused();
   }
 }
 
@@ -95,7 +125,8 @@ static void slice_detection_cb(uint8_t __attribute__((unused)) sender_id,
 void orange_avoider_init(void)
 {
   srand(time(NULL));
-  AbiBindMsgPAYLOAD_DATA(OBSTACLE_DETECTION_ID, &slice_detection_ev, slice_detection_cb);
+  AbiBindMsgPAYLOAD_DATA(DANGER_DETECTOR_SENDER_ID, &danger_detection_ev, slice_detection_cb);
+  AbiBindMsgPAYLOAD_DATA(HORIZON_DETECTOR_SENDER_ID, &horizon_detection_ev, slice_detection_cb);
 }
 
 /*

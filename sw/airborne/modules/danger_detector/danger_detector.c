@@ -88,69 +88,6 @@ static pthread_mutex_t _mutex;
  * Camera callback – runs in the video thread
  * ---------------------------------------------------------------------- */
 
-/* -------------------------------------------------------------------------
- * 7-segment digit overlay helpers
- *
- * Segment bit assignments:
- *   0x01 = a (top)           0x02 = b (upper-right)
- *   0x04 = c (lower-right)   0x08 = d (bottom)
- *   0x10 = e (lower-left)    0x20 = f (upper-left)
- *   0x40 = g (middle)
- * ---------------------------------------------------------------------- */
-
-static const uint8_t _seg7[10] = {
-  0x3F, /* 0: abcdef  */  0x06, /* 1: bc      */  0x5B, /* 2: abdeg   */
-  0x4F, /* 3: abcdg   */  0x66, /* 4: bcfg    */  0x6D, /* 5: acdfg   */
-  0x7D, /* 6: acdefg  */  0x07, /* 7: abc     */  0x7F, /* 8: all     */
-  0x6F, /* 9: abcdfg  */
-};
-
-#define DD_DIGIT_W   8   /* pixels wide per digit  */
-#define DD_DIGIT_H   12  /* pixels tall per digit  */
-#define DD_DIGIT_GAP 2   /* gap between digits      */
-
-static void dd_draw_digit(struct image_t *img, int x0, int y0,
-                          uint8_t d, const uint8_t *color)
-{
-  if (d > 9) { return; }
-  uint8_t s  = _seg7[d];
-  int     Hh = DD_DIGIT_H / 2;
-  struct point_t p1, p2;
-
-#define _SEG(ax, ay, bx, by) \
-  p1.x = (uint16_t)(ax); p1.y = (uint16_t)(ay); \
-  p2.x = (uint16_t)(bx); p2.y = (uint16_t)(by); \
-  image_draw_line_color(img, &p1, &p2, color)
-
-  if (s & 0x01) { _SEG(x0,            y0,             x0+DD_DIGIT_W, y0            ); } /* a top          */
-  if (s & 0x02) { _SEG(x0+DD_DIGIT_W, y0,             x0+DD_DIGIT_W, y0+Hh         ); } /* b upper-right  */
-  if (s & 0x04) { _SEG(x0+DD_DIGIT_W, y0+Hh,          x0+DD_DIGIT_W, y0+DD_DIGIT_H ); } /* c lower-right  */
-  if (s & 0x08) { _SEG(x0,            y0+DD_DIGIT_H,  x0+DD_DIGIT_W, y0+DD_DIGIT_H ); } /* d bottom       */
-  if (s & 0x10) { _SEG(x0,            y0+Hh,          x0,            y0+DD_DIGIT_H ); } /* e lower-left   */
-  if (s & 0x20) { _SEG(x0,            y0,             x0,            y0+Hh         ); } /* f upper-left   */
-  if (s & 0x40) { _SEG(x0,            y0+Hh,          x0+DD_DIGIT_W, y0+Hh         ); } /* g middle       */
-
-#undef _SEG
-}
-
-static void dd_draw_number(struct image_t *img, int x0, int y0,
-                           uint8_t value, const uint8_t *color)
-{
-  uint8_t digits[3];
-  int n = 0;
-  if (value >= 100) {
-    digits[n++] = 1; digits[n++] = 0; digits[n++] = 0;
-  } else if (value >= 10) {
-    digits[n++] = value / 10u;
-    digits[n++] = value % 10u;
-  } else {
-    digits[n++] = value;
-  }
-  for (int i = 0; i < n; i++) {
-    dd_draw_digit(img, x0 + i * (DD_DIGIT_W + DD_DIGIT_GAP), y0, digits[i], color);
-  }
-}
-
 /**
  * is_green_yuv – returns true if the pixel at (y_val, cb_val, cr_val) passes
  * the simple green-floor filter.
@@ -161,6 +98,44 @@ static inline bool is_green_yuv(uint8_t y_val, uint8_t cb_val, uint8_t cr_val)
          (y_val  <= dd_lum_max) &&
          (cb_val <= dd_cb_max)  &&
          (cr_val <= dd_cr_max);
+}
+
+static inline void dd_set_yuv422_pixel(uint8_t *buf, uint16_t width, uint16_t height,
+                                       int32_t row, int32_t x,
+                                       uint8_t y, uint8_t cb, uint8_t cr)
+{
+  if (!buf || row < 0 || x < 0 || row >= (int32_t)height || x >= (int32_t)width) {
+    return;
+  }
+
+  uint16_t uy = (uint16_t)row;
+  uint16_t ux = (uint16_t)x;
+  uint32_t base = (uint32_t)uy * 2u * width + 2u * ux;
+  if ((ux & 1u) == 0u) {
+    buf[base] = cb;
+    buf[base + 1u] = y;
+    buf[base + 2u] = cr;
+  } else {
+    buf[base - 2u] = cb;
+    buf[base + 1u] = y;
+    buf[base] = cr;
+  }
+}
+
+static void dd_draw_dot(uint8_t *buf, uint16_t width, uint16_t height,
+                        uint16_t cx, uint16_t cy, uint8_t radius,
+                        uint8_t y, uint8_t cb, uint8_t cr)
+{
+  int32_t r = (int32_t)radius;
+  int32_t r2 = r * r;
+  for (int32_t dy = -r; dy <= r; dy++) {
+    for (int32_t dx = -r; dx <= r; dx++) {
+      if ((dx * dx + dy * dy) <= r2) {
+        dd_set_yuv422_pixel(buf, width, height, (int32_t)cy + dy, (int32_t)cx + dx,
+                            y, cb, cr);
+      }
+    }
+  }
 }
 
 static struct image_t *danger_detector_cb(struct image_t *img,
@@ -221,67 +196,24 @@ static struct image_t *danger_detector_cb(struct image_t *img,
   _scores_updated = true;
   pthread_mutex_unlock(&_mutex);
 
-  /* ------------------------------------------------------------------
-   * Optional drawing:
-   *   1. Per-pixel tint in the left strip:
-   *        green tint  = safe floor pixel (is_green == true)
-   *        red tint    = obstacle pixel   (is_green == false)
-   *   2. Full-width white horizontal lines at zone boundaries.
-   *
-   * YUV422 colour values  {U, V}:
-   *   green  = {44,  21}   (safe floor)
-   *   red    = {85, 255}   (obstacle)
-   *   white  = {127, 127}  (separator line)
-   * ---------------------------------------------------------------- */
+  /* Draw only a per-zone status dot:
+   * green = safe zone, red = unsafe zone. */
   if (dd_draw) {
     uint8_t *dbuf = (uint8_t *)img->buf;
-
-    /* 1. Tint the left strip pixel-by-pixel.  Step by 2 in x so we process
-          one UYVY macro-pixel [U, Y0, V, Y1] at a time. */
-    for (uint16_t row = 0; row < height; row++) {
-      for (uint16_t x = 0; x < strip_end; x += 2) {
-        uint32_t base  = (uint32_t)row * 2u * width + 2u * x;
-        uint8_t  cb    = dbuf[base];       /* U (Cb) */
-        uint8_t  y0    = dbuf[base + 1];   /* Y of first pixel  */
-        uint8_t  cr    = dbuf[base + 2];   /* V (Cr) */
-
-        bool is_green0 = is_green_yuv(y0, cb, cr);
-
-        /* Same U/V slot covers both x and x+1, so one tint per pair. */
-        dbuf[base + 0] = is_green0 ? 44u : 85u;   /* U (Cb) */
-        if (x + 1 < strip_end) {
-          dbuf[base + 2] = is_green0 ? 21u : 255u; /* V (Cr) */
-        }
-      }
-    }
-
-    /* 2. Draw a full-width white horizontal line at each zone boundary. */
-    static const uint8_t white[4] = {127, 255, 127, 255};
-    cv_grid_draw_horizontal_boundaries(img, DANGER_DETECTOR_NUM_ZONES, white);
-
-    /* 3. Overlay danger score (0-100) centred in each zone, just right of
-          the floor strip.  Colour indicates danger level:
-            green  = low     (score  0-24)
-            yellow = medium  (score 25-49)
-            red    = high/critical (score 50-100)            */
-    static const uint8_t col_low[4]  = { 44, 220,  21, 220}; /* green  */
-    static const uint8_t col_med[4]  = {  0, 230, 149, 230}; /* yellow */
-    static const uint8_t col_high[4] = { 85, 100, 255, 100}; /* red    */
+    static const uint8_t green[4] = {44, 220,  21, 220};
+    static const uint8_t red[4]   = {85, 100, 255, 100};
+    uint16_t dot_x = (strip_end + 10u < width) ? (uint16_t)(strip_end + 10u)
+                                                : (uint16_t)(width / 2u);
 
     for (int z = 0; z < DANGER_DETECTOR_NUM_ZONES; z++) {
       uint8_t score  = (total[z] == 0) ? 0u
                        : (uint8_t)((non_green[z] * 100u) / total[z]);
-      int zone_y0    = (int)cv_grid_zone_boundary_y(height, (uint8_t)z, DANGER_DETECTOR_NUM_ZONES);
-      int zone_y1    = (int)cv_grid_zone_boundary_y(height, (uint8_t)(z + 1), DANGER_DETECTOR_NUM_ZONES);
-      int label_y    = (zone_y0 + zone_y1) / 2 - DD_DIGIT_H / 2;
-      int label_x    = (int)strip_end + 4;
-
-      if (label_y < 0) { label_y = 0; }
-      if (label_y + DD_DIGIT_H >= (int)height) { label_y = (int)height - DD_DIGIT_H - 1; }
-
-      const uint8_t *score_color = (score < 25) ? col_low :
-                                   (score < 50) ? col_med : col_high;
-      dd_draw_number(img, label_x, label_y, score, score_color);
+      bool unsafe = (score >= dd_danger_threshold);
+      uint16_t y0 = (uint16_t)((uint32_t)height * (uint32_t)z / DANGER_DETECTOR_NUM_ZONES);
+      uint16_t y1 = (uint16_t)((uint32_t)height * (uint32_t)(z + 1u) / DANGER_DETECTOR_NUM_ZONES);
+      uint16_t yc = (uint16_t)((y0 + y1) / 2u);
+      const uint8_t *c = unsafe ? red : green;
+      dd_draw_dot(dbuf, width, height, dot_x, yc, 3u, 200u, c[0], c[2]);
     }
   }
 

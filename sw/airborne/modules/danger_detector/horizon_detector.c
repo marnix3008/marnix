@@ -24,20 +24,28 @@
 #define HORIZON_DETECTOR_FPS 0
 #endif
 
+#ifndef HORIZON_DETECTOR_DRAW
+#define HORIZON_DETECTOR_DRAW 1
+#endif
+
 /* Tunables matching the provided Python logic defaults. */
 uint8_t hh_row_step                  = 3;
-uint8_t hh_min_green_run             = 6;
+uint8_t hh_min_green_run             = 15;
 uint8_t hh_green_min                 = 55;
 uint8_t hh_green_max                 = 200;
 uint8_t hh_red_min                   = 40;
 int8_t  hh_green_minus_blue_min      = 25;
 int8_t  hh_green_minus_red_min       = -25;
+uint8_t hh_luma_min                  = 40;
+uint8_t hh_luma_max                  = 200;
+uint8_t hh_cb_max                    = 110;
+uint8_t hh_cr_max                    = 130;
 float   hh_floor_strip_frac          = 0.25f;
 float   hh_invalid_percent_threshold = 15.f;
 float   hh_max_slope                 = 2.0f;
-float   hh_max_slope_change          = 1.5f;
+float   hh_max_slope_change          = 3.0f;
 uint8_t hh_slope_window              = 2;
-bool    hh_draw                      = false;
+bool    hh_draw                      = (HORIZON_DETECTOR_DRAW != 0);
 
 uint8_t horizon_invalid_flags[HORIZON_DETECTOR_NUM_ZONES];
 
@@ -70,11 +78,42 @@ static inline void get_yuv422_pixel(const uint8_t *buf, uint16_t width,
   }
 }
 
-static inline uint8_t clip_u8(int32_t v)
+static inline void set_yuv422_pixel(uint8_t *buf, uint16_t width, uint16_t height,
+                                    int32_t row, int32_t x,
+                                    uint8_t y, uint8_t cb, uint8_t cr)
 {
-  if (v < 0) { return 0u; }
-  if (v > 255) { return 255u; }
-  return (uint8_t)v;
+  if (!buf || row < 0 || x < 0 || row >= (int32_t)height || x >= (int32_t)width) {
+    return;
+  }
+
+  uint16_t uy = (uint16_t)row;
+  uint16_t ux = (uint16_t)x;
+  uint32_t base = (uint32_t)uy * 2u * width + 2u * ux;
+  if ((ux & 1u) == 0u) {
+    buf[base] = cb;
+    buf[base + 1u] = y;
+    buf[base + 2u] = cr;
+  } else {
+    buf[base - 2u] = cb;
+    buf[base + 1u] = y;
+    buf[base] = cr;
+  }
+}
+
+static void draw_dot_yuv422(uint8_t *buf, uint16_t width, uint16_t height,
+                            uint16_t cx, uint16_t cy, uint8_t radius,
+                            uint8_t y, uint8_t cb, uint8_t cr)
+{
+  int32_t r = (int32_t)radius;
+  int32_t r2 = r * r;
+  for (int32_t dy = -r; dy <= r; dy++) {
+    for (int32_t dx = -r; dx <= r; dx++) {
+      if ((dx * dx + dy * dy) <= r2) {
+        set_yuv422_pixel(buf, width, height, (int32_t)cy + dy, (int32_t)cx + dx,
+                         y, cb, cr);
+      }
+    }
+  }
 }
 
 static inline bool is_green_like_pixel(const uint8_t *buf, uint16_t width,
@@ -83,24 +122,11 @@ static inline bool is_green_like_pixel(const uint8_t *buf, uint16_t width,
   uint8_t y, cb, cr;
   get_yuv422_pixel(buf, width, row, x, &y, &cb, &cr);
 
-  /* BT.601 integer approximation from YUV to RGB. */
-  int32_t c = (int32_t)y - 16;
-  int32_t d = (int32_t)cb - 128;
-  int32_t e = (int32_t)cr - 128;
-  if (c < 0) { c = 0; }
-
-  uint8_t r = clip_u8((298 * c + 409 * e + 128) >> 8);
-  uint8_t g = clip_u8((298 * c - 100 * d - 208 * e + 128) >> 8);
-  uint8_t b = clip_u8((298 * c + 516 * d + 128) >> 8);
-
-  int16_t g_minus_b = (int16_t)g - (int16_t)b;
-  int16_t g_minus_r = (int16_t)g - (int16_t)r;
-
-  return (g > hh_green_min) &&
-         (g < hh_green_max) &&
-         (r > hh_red_min) &&
-         (g_minus_b > hh_green_minus_blue_min) &&
-         (g_minus_r > hh_green_minus_red_min);
+  /* Direct YUV thresholds: keep pixels in a green-floor-like region. */
+  return (y >= hh_luma_min) &&
+         (y <= hh_luma_max) &&
+         (cb <= hh_cb_max) &&
+         (cr <= hh_cr_max);
 }
 
 static struct image_t *horizon_detector_cb(struct image_t *img,
@@ -251,8 +277,10 @@ static struct image_t *horizon_detector_cb(struct image_t *img,
   uint16_t min_valid_x = (uint16_t)((float)width * hh_floor_strip_frac);
   uint16_t invalid_counts[HORIZON_DETECTOR_NUM_ZONES];
   uint16_t total_counts[HORIZON_DETECTOR_NUM_ZONES];
+  uint8_t zone_invalid[HORIZON_DETECTOR_NUM_ZONES];
   memset(invalid_counts, 0, sizeof(invalid_counts));
   memset(total_counts, 0, sizeof(total_counts));
+  memset(zone_invalid, 0, sizeof(zone_invalid));
 
   for (uint16_t i = 0u; i < sample_count; i++) {
     uint8_t zone = zone_from_row(boundary_y[i], height);
@@ -268,7 +296,8 @@ static struct image_t *horizon_detector_cb(struct image_t *img,
     float invalid_percent = (total_counts[z] > 0u)
                             ? (100.f * (float)invalid_counts[z] / (float)total_counts[z])
                             : 0.f;
-    _flags_buf[z] = (invalid_percent > hh_invalid_percent_threshold) ? 1u : 0u;
+    zone_invalid[z] = (invalid_percent > hh_invalid_percent_threshold) ? 1u : 0u;
+    _flags_buf[z] = zone_invalid[z];
   }
   _flags_updated = true;
   pthread_mutex_unlock(&_mutex);
@@ -283,6 +312,18 @@ static struct image_t *horizon_detector_cb(struct image_t *img,
       struct point_t from = {0u, y_line, 0u, 0u, 0u};
       struct point_t to   = {(uint16_t)(width - 1u), y_line, 0u, 0u, 0u};
       image_draw_line_color(img, &from, &to, white);
+    }
+
+    /* Zone-level status dots in the grid: green = safe, red = dangerous. */
+    uint16_t dot_x = (width > 20u) ? 10u : (uint16_t)(width / 2u);
+    for (uint8_t z = 0u; z < HORIZON_DETECTOR_NUM_ZONES; z++) {
+      uint16_t y0 = (uint16_t)((uint32_t)height * z / HORIZON_DETECTOR_NUM_ZONES);
+      uint16_t y1 = (uint16_t)((uint32_t)height * (z + 1u) / HORIZON_DETECTOR_NUM_ZONES);
+      uint16_t yc = (uint16_t)((y0 + y1) / 2u);
+
+      const uint8_t *c = zone_invalid[z] ? red : green;
+      draw_dot_yuv422((uint8_t *)img->buf, width, height, dot_x, yc, 3u,
+                      200u, c[0], c[2]);
     }
 
     for (uint16_t i = 0u; i < sample_count; i++) {

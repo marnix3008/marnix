@@ -19,6 +19,7 @@ flight plan by default.
     <define name="HORIZON_DETECTOR_NUM_ZONES" value="12" description="Number of horizontal zones"/>
     <define name="HORIZON_DETECTOR_SENDER_ID" value="2" description="ABI sender ID for this detector"/>
     <define name="HORIZON_DETECTOR_DATA_TYPE" value="2" description="ABI PAYLOAD_DATA data_type value"/>
+    <define name="HORIZON_DETECTOR_DRAW" value="1" description="Enable overlay drawing (1=on, 0=off)"/>
     <define name="HORIZON_DETECTOR_VERBOSE" value="" description="Define to print per-zone flags"/>
   </doc>
 
@@ -27,11 +28,10 @@ flight plan by default.
       <dl_settings name="HorizonDetector">
         <dl_setting var="hh_row_step"                  min="1"    step="1"    max="20"  shortname="row_step"/>
         <dl_setting var="hh_min_green_run"             min="1"    step="1"    max="32"  shortname="green_run"/>
-        <dl_setting var="hh_green_min"                 min="0"    step="1"    max="255" shortname="g_min"/>
-        <dl_setting var="hh_green_max"                 min="0"    step="1"    max="255" shortname="g_max"/>
-        <dl_setting var="hh_red_min"                   min="0"    step="1"    max="255" shortname="r_min"/>
-        <dl_setting var="hh_green_minus_blue_min"      min="-128" step="1"    max="127" shortname="g-b_min"/>
-        <dl_setting var="hh_green_minus_red_min"       min="-128" step="1"    max="127" shortname="g-r_min"/>
+        <dl_setting var="hh_luma_min"                  min="0"    step="1"    max="255" shortname="y_min"/>
+        <dl_setting var="hh_luma_max"                  min="0"    step="1"    max="255" shortname="y_max"/>
+        <dl_setting var="hh_cb_max"                    min="0"    step="1"    max="255" shortname="cb_max"/>
+        <dl_setting var="hh_cr_max"                    min="0"    step="1"    max="255" shortname="cr_max"/>
         <dl_setting var="hh_floor_strip_frac"          min="0.0"  step="0.01" max="1.0" shortname="strip_f"/>
         <dl_setting var="hh_invalid_percent_threshold" min="0.0"  step="1.0"  max="100" shortname="inv_thr"/>
         <dl_setting var="hh_max_slope"                 min="0.1"  step="0.1"  max="10"  shortname="slope"/>
