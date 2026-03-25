@@ -324,7 +324,6 @@ static uint8_t calculateForwards(struct EnuCoor_i *new_coor, float distanceMeter
  */
 static uint8_t moveWaypoint(uint8_t waypoint, struct EnuCoor_i *new_coor)
 {
-  VERBOSE_PRINT("MOVING_WAYPOINT\n");
   waypoint_move_xy_i(waypoint, new_coor->x, new_coor->y);
   return false;
 }
