@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE flight_plan SYSTEM "../flight_plan.dtd">
-<flight_plan alt="1.0" ground_alt="0" lat0="51.990634" lon0="4.376789" max_dist_from_home="60" name="Bebop avoid orange TU Delft Cyberzoo" security_height="0.4">
+<flight_plan alt="0.3" ground_alt="0" lat0="51.990634" lon0="4.376789" max_dist_from_home="60" name="Bebop avoid orange TU Delft Cyberzoo" security_height="0.4">
   
   <!--=== Header: module and Gazebo simulation world includes ===-->
   <header>
@@ -20,34 +20,38 @@
     <waypoint name="GOAL" x="1.9" y="1.0"/>
     <waypoint name="TRAJECTORY" x="1.9" y="1.0"/>
     <waypoint name="RETREAT" x="1.9" y="1.0"/>
-    <waypoint lat="51.9905834" lon="4.3767710" name="_CZ1"/>
-    <waypoint lat="51.9906440" lon="4.3767060" name="_CZ2"/>
-    <waypoint lat="51.9906860" lon="4.3768080" name="_CZ3"/>
-    <waypoint lat="51.9906238" lon="4.3768729" name="_CZ4"/>
-    <waypoint lat="51.9906006" lon="4.3767764" name="_OZ1"/>
-    <waypoint lat="51.9906405" lon="4.3767316" name="_OZ2"/>
-    <waypoint lat="51.9906687" lon="4.3768025" name="_OZ3"/>
-    <waypoint lat="51.9906273" lon="4.3768438" name="_OZ4"/>
+    <waypoint lat="51.9905834" lon="4.3767710" name="CZ1"/>
+    <waypoint lat="51.9906440" lon="4.3767060" name="CZ2"/>
+    <waypoint lat="51.9906860" lon="4.3768080" name="CZ3"/>
+    <waypoint lat="51.9906238" lon="4.3768729" name="CZ4"/>
+    <waypoint lat="51.9906006" lon="4.3767764" name="OZ1"/>
+    <waypoint lat="51.9906405" lon="4.3767316" name="OZ2"/>
+    <waypoint lat="51.9906687" lon="4.3768025" name="OZ3"/>
+    <waypoint lat="51.9906273" lon="4.3768438" name="OZ4"/>
   </waypoints>
 
   <!--=== Sectors: define geofence regions ===-->
   <sectors>
     <!-- Outer geofence (hard stop, Cyberzoo walls) -->
     <sector color="red" name="CyberZoo">
-      <corner name="_CZ1"/>
-      <corner name="_CZ2"/>
-      <corner name="_CZ3"/>
-      <corner name="_CZ4"/>
-    </sector>
+      <corner name="CZ1"/>
+      <corner name="CZ2"/>
+      <corner name="CZ3"/>
+      <corner name="CZ4"/>
+  </sector>
 
     <!-- Inner geofence (soft stop, obstacle zone) -->
     <sector color="#FF9922" name="ObstacleZone">
-      <corner name="_OZ1"/>
-      <corner name="_OZ2"/>
-      <corner name="_OZ3"/>
-      <corner name="_OZ4"/>
+      <corner name="OZ1"/>
+      <corner name="OZ2"/>
+      <corner name="OZ3"/>
+      <corner name="OZ4"/>
     </sector>
   </sectors>
+
+  <variables>
+    <variable var="start_alt" type="float" init="0.3" min="0.1" max="2.0" step="0.05" shortname="start_alt"/>
+  </variables>
 
   <!--=== Exceptions: handle emergencies and geofencing ===-->
   <exceptions>
@@ -58,11 +62,6 @@
       (autopilot_in_flight() == true) )" deroute="Standby"/-->
     <!-- Datalink lost (constant RPM descent) -->
     <exception cond="((datalink_time @GT 5) @AND
-      !(IndexOfBlock('Holding point') @GT nav_block) @AND
-      !(nav_block >= IndexOfBlock('land here')) @AND
-      (autopilot_in_flight() == true) )" deroute="land here"/>
-    <!-- Geofencing XY -->
-    <exception cond="(!InsideCyberZoo(GetPosX(), GetPosY()) @AND
       !(IndexOfBlock('Holding point') @GT nav_block) @AND
       !(nav_block >= IndexOfBlock('land here')) @AND
       (autopilot_in_flight() == true) )" deroute="land here"/>
@@ -124,7 +123,7 @@
 
     <block key="g" name="START" strip_button="Go" strip_icon="lookfore.png">
       <call_once fun="NavSetWaypointHere(WP_GOAL)"/>
-      <stay wp="GOAL"/>
+      <stay wp="GOAL" height="start_alt"/>
     </block>
 
     <block name="STOP">
