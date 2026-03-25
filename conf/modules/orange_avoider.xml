@@ -3,27 +3,27 @@
 <module name="orange_avoider">
   <doc>
     <description>
-This module is an example module for the course AE4317 Autonomous Flight of Micro Air Vehicles at the TU Delft.
-This module is used in combination with a color filter (cv_detect_color_object) and the navigation mode of the autopilot.
-The avoidance strategy is to simply count the total number of orange pixels. When above a certain percentage threshold,
-(given by color_count_frac) we assume that there is an obstacle and we turn.
-
-The color filter settings are set using the cv_detect_color_object. This module can run multiple filters simultaneously
-so you have to define which filter to use with the ORANGE_AVOIDER_VISUAL_DETECTION_ID setting.
+AE4317 course navigation module. Receives 12-slice obstacle danger values (0-100)
+via PAYLOAD_DATA ABI from the vision team. Finds the widest gap of free slices
+and steers toward it. Falls back to weighted-centroid turning when fully blocked.
+Set OBSTACLE_DETECTION_ID to match the sender ID used by the vision module.
     </description>
-    <define name="ORANGE_AVOIDER_VISUAL_DETECTION_ID" value="ABI_BROADCAST" description="which VISUAL_DETECTION message to receive for orange pixel detection."/>
+    <define name="OBSTACLE_DETECTION_ID" value="ABI_BROADCAST"/>
   </doc>
-    <settings>
+  <settings>
     <dl_settings>
       <dl_settings name="OrangeAvoider">
-         <dl_setting var="oa_color_count_frac" min="0" step="0.01" max="0.5"/>
+        <dl_setting var="oa_free_threshold"        min="0"   step="1"   max="100" shortname="free_thr"/>
+        <dl_setting var="oa_min_gap_width"         min="1"   step="1"   max="6"   shortname="min_gap"/>
+        <dl_setting var="oa_max_heading_increment" min="1"   step="0.5" max="15"  shortname="head_inc"/>
+        <dl_setting var="maxDistance"              min="0.5" step="0.1" max="5"   shortname="max_dist"/>
+        <!-- <dl_setting var="oa_free_threshold"        min="0"   step="1"   max="100" shortname="free_thr" description="Danger score below which a slice is free (0-100)"/>
+        <dl_setting var="oa_min_gap_width"         min="1"   step="1"   max="6"   shortname="min_gap"  description="Minimum adjacent free slices for a valid gap"/>
+        <dl_setting var="oa_max_heading_increment" min="1"   step="0.5" max="15"  shortname="head_inc" description="Max heading change per tick [deg]"/>
+        <dl_setting var="maxDistance"              min="0.5" step="0.1" max="5"   shortname="max_dist" description="Max waypoint displacement [m]"/> -->
       </dl_settings>
     </dl_settings>
   </settings>
-  
-  <dep>
-    <depends>cv_detect_color_object</depends>
-  </dep>
   <header>
     <file name="orange_avoider.h"/>
   </header>

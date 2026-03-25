@@ -11,14 +11,15 @@
       <define name="LOGGER_FILE_PATH" value="/data/ftp/internal_000/log"/>
       <define name="MT9V117_TARGET_FPS" value="20"/>
       <define name="CAMERA_ROTATED_90DEG_RIGHT" value="TRUE"/>
+      <define name="ORANGE_AVOIDER_VERBOSE" value="FALSE"/><!-- default OFF on real drone -->
       
-      <!-- Detect orange -->
-      <define name="COLOR_OBJECT_DETECTOR_LUM_MIN1" value="30"/>
+      <!-- Detect orange (unused, kept for reference) -->
+      <!--define name="COLOR_OBJECT_DETECTOR_LUM_MIN1" value="30"/>
       <define name="COLOR_OBJECT_DETECTOR_LUM_MAX1" value="190"/>
       <define name="COLOR_OBJECT_DETECTOR_CB_MIN1" value="70"/>
       <define name="COLOR_OBJECT_DETECTOR_CB_MAX1" value="130"/>
       <define name="COLOR_OBJECT_DETECTOR_CR_MIN1" value="150"/>
-      <define name="COLOR_OBJECT_DETECTOR_CR_MAX1" value="190"/>
+      <define name="COLOR_OBJECT_DETECTOR_CR_MAX1" value="190"/-->
       <module name="ahrs" type="int_cmpl_quat">
         <configure name="USE_MAGNETOMETER" value="FALSE"/>
         <define name="AHRS_USE_GPS_HEADING" value="TRUE"/>
@@ -30,14 +31,15 @@
       <define name="VIDEO_CAPTURE_PATH" value="/tmp/paparazzi/images"/>
       <define name="LOGGER_FILE_PATH" value="/tmp/paparazzi/log"/>
       <define name="CAMERA_ROTATED_90DEG_RIGHT" value="TRUE"/>
+      <define name="ORANGE_AVOIDER_VERBOSE" value="TRUE"/><!-- default ON in simulation -->
       
-      <!-- Detect orange -->
-      <define name="COLOR_OBJECT_DETECTOR_LUM_MIN1" value="41"/>
+      <!-- Detect orange (unused, kept for reference) -->
+      <!--define name="COLOR_OBJECT_DETECTOR_LUM_MIN1" value="41"/>
       <define name="COLOR_OBJECT_DETECTOR_LUM_MAX1" value="183"/>
       <define name="COLOR_OBJECT_DETECTOR_CB_MIN1" value="53"/>
       <define name="COLOR_OBJECT_DETECTOR_CB_MAX1" value="121"/>
       <define name="COLOR_OBJECT_DETECTOR_CR_MIN1" value="134"/>
-      <define name="COLOR_OBJECT_DETECTOR_CR_MAX1" value="249"/>
+      <define name="COLOR_OBJECT_DETECTOR_CR_MAX1" value="249"/-->
       <module name="ahrs" type="float_mlkf"> <!-- was int_cmpl_quat  -->
         <configure name="USE_MAGNETOMETER" value="FALSE"/>
         <define name="AHRS_USE_GPS_HEADING" value="TRUE"/>
@@ -72,25 +74,23 @@
       <define name="OPENCVDEMO_CAMERA" value="front_camera"/>
       <define name="OPENCVDEMO_FPS" value="10"/>
     </module -->
-    <module name="cv_detect_color_object">
-      <define name="COLOR_OBJECT_DETECTOR_CAMERA1" value="front_camera"/>
-      <define name="COLOR_OBJECT_DETECTOR_FPS1" value="0"/>
-      <define name="COLOR_OBJECT_DETECTOR_DRAW1" value="1"/>
-    </module>
     <module name="orange_avoider">
-      <define name="ORANGE_AVOIDER_VISUAL_DETECTION_ID" value="COLOR_OBJECT_DETECTION1_ID"/>
+      <!-- Set to match the sender ID used by the vision team's slice detection module -->
+      <define name="OBSTACLE_DETECTION_ID" value="1"/>
+      <!-- Manual override: uncomment to force verbose ON regardless of target -->
+      <!-- <define name="ORANGE_AVOIDER_VERBOSE" value="TRUE"/> -->
     </module>
-    <module name="cv_detect_gate">
-      <define name="DETECT_GATE_CAMERA" value="front_camera"/>
-      <define name="DETECT_GATE_FPS" value="0"/>
-      <define name="DETECT_GATE_MIN_N_SIDES" value="2"/>
-      <define name="DETECT_GATE_MIN_GATE_QUALITY" value="0.08"/>
-      <define name="DETECT_GATE_Y_MIN" value="20"/>
-      <define name="DETECT_GATE_Y_MAX" value="220"/>
-      <define name="DETECT_GATE_U_MIN" value="130"/>
-      <define name="DETECT_GATE_U_MAX" value="255"/>
-      <define name="DETECT_GATE_V_MIN" value="0"/>
-      <define name="DETECT_GATE_V_MAX" value="130"/>
+    <module name="danger_detector">
+      <define name="DANGER_DETECTOR_CAMERA" value="front_camera"/>
+      <define name="DANGER_DETECTOR_FPS" value="0"/>
+      <define name="DANGER_DETECTOR_NUM_ZONES" value="12"/>
+      <define name="DANGER_DETECTOR_SENDER_ID" value="1"/><!-- must match OBSTACLE_DETECTION_ID -->
+      <!-- <define name="DANGER_DETECTOR_VERBOSE"/> -->
+    </module>
+    <module name="gate_detector">
+      <define name="GATE_DETECTOR_CAMERA" value="front_camera"/>
+      <define name="GATE_DETECTOR_FPS" value="0"/>
+      <!-- <define name="GATE_DETECTOR_VERBOSE"/> -->
     </module>
     <module name="video_rtp_stream">
       <define name="VIEWVIDEO_CAMERA" value="front_camera"/>

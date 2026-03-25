@@ -79,11 +79,11 @@
     <module name="cv_detect_color_object">
       <define name="COLOR_OBJECT_DETECTOR_CAMERA1" value="front_camera"/>
       <define name="COLOR_OBJECT_DETECTOR_FPS1" value="0"/>
-      <define name="COLOR_OBJECT_DETECTOR_DRAW1" value="1"/>
+      <define name="COLOR_OBJECT_DETECTOR_DRAW1" value="0"/>
       
       <define name="COLOR_OBJECT_DETECTOR_CAMERA2" value="front_camera"/>
       <define name="COLOR_OBJECT_DETECTOR_FPS2" value="0"/>
-      <define name="COLOR_OBJECT_DETECTOR_DRAW2" value="1"/>
+      <define name="COLOR_OBJECT_DETECTOR_DRAW2" value="0"/>
     </module>
     <module name="orange_avoider_guided">
       <define name="ORANGE_AVOIDER_VISUAL_DETECTION_ID" value="COLOR_OBJECT_DETECTION1_ID"/>
@@ -100,6 +100,12 @@
       <define name="DETECT_GATE_U_MAX" value="255"/>
       <define name="DETECT_GATE_V_MIN" value="0"/>
       <define name="DETECT_GATE_V_MAX" value="130"/>
+    </module>
+    <module name="danger_detector">
+      <define name="DANGER_DETECTOR_CAMERA" value="front_camera"/>
+      <define name="DANGER_DETECTOR_FPS" value="0"/>
+      <define name="DANGER_DETECTOR_NUM_ZONES" value="9"/>
+      <define name="DANGER_DETECTOR_VERBOSE"/>
     </module>
     <module name="video_rtp_stream">
       <define name="VIEWVIDEO_CAMERA" value="front_camera"/>

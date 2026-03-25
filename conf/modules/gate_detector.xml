@@ -1,0 +1,51 @@
+<!DOCTYPE module SYSTEM "module.dtd">
+
+<module name="gate_detector" dir="gate_detector">
+  <doc>
+    <description>
+Blue gate detector for the TU Delft Cyberzoo.
+
+Detects a blue gate by finding two tall vertical blue blobs (posts) in
+the front camera image using a fast column-histogram approach.
+Works in YUV422 directly -- no HSV conversion, no mask image stored.
+2x subsampling gives ~31 200 pixels to check per frame.
+
+Results are stored in gd_gate_detected, gd_gate_x, gd_gate_y, gd_gate_width.
+    </description>
+    <define name="GATE_DETECTOR_CAMERA" value="front_camera" description="Camera device to use"/>
+    <define name="GATE_DETECTOR_FPS"    value="0"            description="Desired FPS (0 = camera rate)"/>
+    <define name="GATE_DETECTOR_VERBOSE"                     description="Define to print detections each periodic cycle"/>
+  </doc>
+
+  <settings>
+    <dl_settings>
+      <dl_settings name="GateDetector">
+        <dl_setting var="gd_y_min"         min="0"   step="1"  max="255" shortname="Y_min"/>
+        <dl_setting var="gd_y_max"         min="0"   step="1"  max="255" shortname="Y_max"/>
+        <dl_setting var="gd_cb_min"        min="0"   step="1"  max="255" shortname="Cb_min"/>
+        <dl_setting var="gd_cb_max"        min="0"   step="1"  max="255" shortname="Cb_max"/>
+        <dl_setting var="gd_cr_min"        min="0"   step="1"  max="255" shortname="Cr_min"/>
+        <dl_setting var="gd_cr_max"        min="0"   step="1"  max="255" shortname="Cr_max"/>
+        <dl_setting var="gd_min_ratio_x10" min="5"   step="1"  max="50"  shortname="ratio_x10"/>
+        <dl_setting var="gd_min_col_fill"  min="1"   step="1"  max="50"  shortname="col_fill_pct"/>
+        <dl_setting var="gd_min_post_sep"  min="2"   step="1"  max="60"  shortname="min_sep"/>
+        <dl_setting var="gd_draw"          min="0"   step="1"  max="1"   shortname="draw" values="False|True"/>
+      </dl_settings>
+    </dl_settings>
+  </settings>
+
+  <dep>
+    <depends>video_thread</depends>
+  </dep>
+
+  <header>
+    <file name="gate_detector.h"/>
+  </header>
+
+  <init fun="gate_detector_init()"/>
+  <periodic fun="gate_detector_periodic()" freq="4"/>
+
+  <makefile target="ap|nps">
+    <file name="gate_detector.c"/>
+  </makefile>
+</module>
