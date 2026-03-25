@@ -9,12 +9,13 @@
  *
  * Blue gate post detector for the TU Delft Cyberzoo.
  *
- * The camera is in portrait orientation (width=240, height=520).
- * Gate posts appear as tall, narrow, vertical blue blobs.
+ * The camera is physically rotated 90° on the Bebop, so the image buffer is
+ * in landscape orientation. Gate posts appear as wide, short HORIZONTAL blobs
+ * (one near the top of the image, one near the bottom).
  *
  * Key design choices for the Bebop's limited hardware:
- *   - 2x subsampling in both dimensions  →  ~120×260 = 31 200 pixels per frame
- *   - Column histogram only (no mask image stored)
+ *   - 2x subsampling in both dimensions  →  ~260×120 = 31 200 pixels per frame
+ *   - Row histogram only (no mask image stored)
  *   - Integer arithmetic throughout, no floating point in the hot path
  *   - Static arrays, no dynamic allocation
  */
@@ -40,8 +41,8 @@
 #define GATE_DETECTOR_FPS 0   /* 0 = run at camera rate */
 #endif
 
-/* Maximum sub-sampled image width supported (covers up to 640 px wide images). */
-#define GD_MAX_SCOLS 320
+/* Maximum sub-sampled dimension (covers images up to 640px in either axis). */
+#define GD_MAX_SSIZE 320
 
 /* -------------------------------------------------------------------------
  * Tunable settings (accessible via GCS)
@@ -56,9 +57,9 @@ uint8_t gd_cb_max         = 235;
 uint8_t gd_cr_min         = 55;
 uint8_t gd_cr_max         = 125;
 
-uint8_t gd_min_ratio_x10  = 18;   /* 1.8 × 10 — same threshold as Python */
-uint8_t gd_min_col_fill   = 12;   /* ≥ 12 % of sub-sampled rows must be blue */
-uint8_t gd_min_post_sep   = 10;   /* posts must be ≥ 10 sub-sampled cols apart */
+uint8_t gd_min_ratio_x10  = 18;   /* min width/height ratio × 10 (e.g. 18 = 1.8) */
+uint8_t gd_min_col_fill   = 12;   /* ≥ 12 % of sub-sampled columns must be blue in a post row */
+uint8_t gd_min_post_sep   = 5;    /* posts must be ≥ 5 sub-sampled rows apart */
 bool    gd_draw           = true;
 
 /* -------------------------------------------------------------------------
@@ -100,32 +101,34 @@ static struct image_t *gate_detector_cb(struct image_t *img,
   const uint16_t H = img->h;
   const uint8_t *buf = (const uint8_t *)img->buf;
 
-  /* Sub-sampled dimensions. */
+  /* Sub-sampled dimensions (step 2 in each axis). */
   const uint16_t scols = W / 2;
   const uint16_t srows = H / 2;
 
-  if (scols > GD_MAX_SCOLS) { return img; }   /* safety guard */
+  if (srows > GD_MAX_SSIZE) { return img; }   /* safety guard */
 
-  /* ---- 1. Build column histogram ------------------------------------ */
-  /* col_count[c] = number of blue pixels in sub-sampled column c.
-   * col_ymin/ymax track vertical span (in original image rows).        */
-  static uint16_t col_count[GD_MAX_SCOLS];
-  static uint16_t col_ymin[GD_MAX_SCOLS];
-  static uint16_t col_ymax[GD_MAX_SCOLS];
+  /* ---- 1. Build row histogram ---------------------------------------- */
+  /* row_count[r] = number of blue pixels in sub-sampled row r.
+   * row_xmin/xmax track horizontal span (in original image columns).    */
+  static uint16_t row_count[GD_MAX_SSIZE];
+  static uint16_t row_xmin[GD_MAX_SSIZE];
+  static uint16_t row_xmax[GD_MAX_SSIZE];
 
-  memset(col_count, 0, scols * sizeof(uint16_t));
-  for (uint16_t c = 0; c < scols; c++) {
-    col_ymin[c] = H;
-    col_ymax[c] = 0;
+  memset(row_count, 0, srows * sizeof(uint16_t));
+  for (uint16_t r = 0; r < srows; r++) {
+    row_xmin[r] = W;
+    row_xmax[r] = 0;
   }
 
   /* Process only even rows and even columns (2× sub-sampling).
-   * For an even column x = 2c, the UYVY macro-pixel layout gives:
+   * For even column x = 2c, UYVY layout:
    *   buf[ row*2W + 4c ]     = U (Cb)
    *   buf[ row*2W + 4c + 1 ] = Y0
-   *   buf[ row*2W + 4c + 2 ] = V (Cr)                                 */
+   *   buf[ row*2W + 4c + 2 ] = V (Cr)                                   */
   for (uint16_t row = 0; row < H; row += 2) {
+    const uint16_t r        = row / 2;
     const uint32_t row_base = (uint32_t)row * 2u * W;
+
     for (uint16_t c = 0; c < scols; c++) {
       const uint32_t base = row_base + (uint32_t)c * 4u;
       const uint8_t  cb   = buf[base];
@@ -133,26 +136,27 @@ static struct image_t *gate_detector_cb(struct image_t *img,
       const uint8_t  cr   = buf[base + 2];
 
       if (is_blue_yuv(y, cb, cr)) {
-        col_count[c]++;
-        if (row < col_ymin[c]) { col_ymin[c] = row; }
-        if (row > col_ymax[c]) { col_ymax[c] = row; }
+        const uint16_t x = c * 2u;   /* original pixel column */
+        row_count[r]++;
+        if (x < row_xmin[r]) { row_xmin[r] = x; }
+        if (x > row_xmax[r]) { row_xmax[r] = x; }
       }
     }
   }
 
-  /* ---- 2. Threshold columns ----------------------------------------- */
-  /* A column is "active" (part of a post) if it has enough blue pixels. */
-  const uint16_t fill_thresh = (uint16_t)((uint32_t)srows * gd_min_col_fill / 100u);
+  /* ---- 2. Threshold rows -------------------------------------------- */
+  /* A row is "active" if it has enough blue pixels across its width.    */
+  const uint16_t fill_thresh = (uint16_t)((uint32_t)scols * gd_min_col_fill / 100u);
   const uint16_t min_th      = (fill_thresh < 2) ? 2u : fill_thresh;
 
-  /* ---- 3. Find runs of active columns --------------------------------- */
+  /* ---- 3. Find runs of active rows ------------------------------------ */
   /* We keep the two runs with the most total blue pixels.               */
   typedef struct {
-    uint16_t start;   /* first sub-sampled col in run  */
-    uint16_t end;     /* last  sub-sampled col in run  */
+    uint16_t start;   /* first sub-sampled row in run  */
+    uint16_t end;     /* last  sub-sampled row in run  */
     uint32_t score;   /* total blue pixels in run      */
-    uint16_t ymin;    /* min original row seen         */
-    uint16_t ymax;    /* max original row seen         */
+    uint16_t xmin;    /* leftmost  blue pixel seen     */
+    uint16_t xmax;    /* rightmost blue pixel seen     */
   } GdRun;
 
   GdRun best[2];
@@ -162,29 +166,26 @@ static struct image_t *gate_detector_cb(struct image_t *img,
   bool in_run = false;
   GdRun cur;
   memset(&cur, 0, sizeof(cur));
-  cur.ymin = H; cur.ymax = 0;
+  cur.xmin = W; cur.xmax = 0;
 
-  for (uint16_t c = 0; c <= scols; c++) {
-    bool active = (c < scols) && (col_count[c] >= min_th);
+  for (uint16_t r = 0; r <= srows; r++) {
+    bool active = (r < srows) && (row_count[r] >= min_th);
 
     if (active && !in_run) {
-      /* Start new run. */
-      in_run = true;
-      cur.start = c;
-      cur.end   = c;
-      cur.score = col_count[c];
-      cur.ymin  = col_ymin[c];
-      cur.ymax  = col_ymax[c];
+      in_run    = true;
+      cur.start = r;
+      cur.end   = r;
+      cur.score = row_count[r];
+      cur.xmin  = row_xmin[r];
+      cur.xmax  = row_xmax[r];
 
     } else if (active && in_run) {
-      /* Extend run. */
-      cur.end    = c;
-      cur.score += col_count[c];
-      if (col_ymin[c] < cur.ymin) { cur.ymin = col_ymin[c]; }
-      if (col_ymax[c] > cur.ymax) { cur.ymax = col_ymax[c]; }
+      cur.end    = r;
+      cur.score += row_count[r];
+      if (row_xmin[r] < cur.xmin) { cur.xmin = row_xmin[r]; }
+      if (row_xmax[r] > cur.xmax) { cur.xmax = row_xmax[r]; }
 
     } else if (!active && in_run) {
-      /* End of run: check if it beats one of our best two. */
       in_run = false;
       if (cur.score > best[0].score) {
         best[1] = best[0];
@@ -192,81 +193,79 @@ static struct image_t *gate_detector_cb(struct image_t *img,
       } else if (cur.score > best[1].score) {
         best[1] = cur;
       }
-      cur.ymin = H; cur.ymax = 0; cur.score = 0;
+      cur.xmin = W; cur.xmax = 0; cur.score = 0;
     }
   }
 
-  /* ---- 4. Validate both posts (height/width ratio) ------------------- */
+  /* ---- 4. Validate both posts (width/height ratio) ------------------- */
   bool det = false;
   int16_t gate_x = 0, gate_y = 0;
   uint16_t gate_w = 0;
 
   if (best[0].score > 0 && best[1].score > 0) {
-    /* Sort so that post0 is left, post1 is right. */
-    GdRun *left  = (best[0].start < best[1].start) ? &best[0] : &best[1];
-    GdRun *right = (best[0].start < best[1].start) ? &best[1] : &best[0];
+    /* Sort so that post0 is top, post1 is bottom. */
+    GdRun *top = (best[0].start < best[1].start) ? &best[0] : &best[1];
+    GdRun *bot = (best[0].start < best[1].start) ? &best[1] : &best[0];
 
-    /* Minimum post separation check. */
-    if ((right->start - left->end) >= gd_min_post_sep) {
+    /* Minimum post separation check (in sub-sampled rows). */
+    if ((bot->start - top->end) >= gd_min_post_sep) {
 
-      /* Height/width ratio check for each post (integer, ×10).
-       * Run width in original pixels = (end - start + 1) * 2.
-       * Span in original pixels      = ymax - ymin.             */
-      uint16_t lw  = (uint16_t)((left->end  - left->start  + 1u) * 2u);
-      uint16_t lh  = (left->ymax  > left->ymin)  ? (left->ymax  - left->ymin)  : 0u;
-      uint16_t rw  = (uint16_t)((right->end - right->start + 1u) * 2u);
-      uint16_t rh  = (right->ymax > right->ymin) ? (right->ymax - right->ymin) : 0u;
+      /* Width/height ratio check for each post (integer, ×10).
+       * Run height in original pixels = (end - start + 1) * 2.
+       * Width in original pixels      = xmax - xmin.              */
+      uint16_t t_h = (uint16_t)((top->end - top->start + 1u) * 2u);
+      uint16_t t_w = (top->xmax > top->xmin) ? (top->xmax - top->xmin) : 0u;
+      uint16_t b_h = (uint16_t)((bot->end - bot->start + 1u) * 2u);
+      uint16_t b_w = (bot->xmax > bot->xmin) ? (bot->xmax - bot->xmin) : 0u;
 
-      /* ratio_x10 = h * 10 / w  — avoids float */
-      bool l_ok = (lw > 0) && ((uint32_t)lh * 10u / lw >= gd_min_ratio_x10);
-      bool r_ok = (rw > 0) && ((uint32_t)rh * 10u / rw >= gd_min_ratio_x10);
+      /* ratio_x10 = w * 10 / h — avoids float */
+      bool t_ok = (t_h > 0) && ((uint32_t)t_w * 10u / t_h >= gd_min_ratio_x10);
+      bool b_ok = (b_h > 0) && ((uint32_t)b_w * 10u / b_h >= gd_min_ratio_x10);
 
-      if (l_ok && r_ok) {
+      if (t_ok && b_ok) {
         det = true;
 
-        /* Gate centre x: midpoint between the two post centres (in original px). */
-        uint16_t l_cx = (uint16_t)((left->start  + left->end  + 1u) * 1u); /* = (sc+.5)*2, approx */
-        uint16_t r_cx = (uint16_t)((right->start + right->end + 1u) * 1u);
-        gate_x = (int16_t)((l_cx + r_cx) / 2);
-        gate_y = (int16_t)(((left->ymin + left->ymax) / 2u +
-                             (right->ymin + right->ymax) / 2u) / 2u);
-        gate_w = (uint16_t)(r_cx - l_cx);
+        /* Post centres in original pixel coordinates.
+         * Sub-sampled row r → original row 2r, so centre = start + end. */
+        uint16_t top_cy = top->start + top->end;   /* original row centre */
+        uint16_t bot_cy = bot->start + bot->end;
+        uint16_t top_cx = (top->xmin + top->xmax) / 2u;
+        uint16_t bot_cx = (bot->xmin + bot->xmax) / 2u;
+
+        gate_x = (int16_t)((top_cx + bot_cx) / 2u);
+        gate_y = (int16_t)((top_cy + bot_cy) / 2u);
+        gate_w = (uint16_t)(bot_cy - top_cy);   /* vertical gate aperture */
 
         /* ---- 5. Optional drawing ------------------------------------ */
         if (gd_draw) {
-          uint8_t *dbuf = (uint8_t *)img->buf;
-
-          /* Draw left post: vertical cyan line at post centre column.
-           * Draw right post: vertical green line at post centre column.
-           * Draw gate centre: horizontal white line at gate_y.          *
+          /* Top post:    horizontal cyan  line at top_cy
+           * Bottom post: horizontal green line at bot_cy
+           * Gate centre: vertical white line at gate_x
            *
-           * YUV colour values {U, V}:
-           *   cyan  = { 166, 16 }
-           *   green = {  44, 21 }
-           *   white = { 127,127 }                                       */
+           * YUV colour values {U, Y, V, Y}:
+           *   cyan  = {166, 200,  16, 200}
+           *   green = { 44, 200,  21, 200}
+           *   white = {127, 255, 127, 255}                              */
           static const uint8_t col_cyan[4]  = {166, 200,  16, 200};
           static const uint8_t col_green[4] = { 44, 200,  21, 200};
           static const uint8_t col_white[4] = {127, 255, 127, 255};
 
-          /* Vertical line helpers – draw at original column x_px. */
           struct point_t p1, p2;
 
-          /* Left post */
-          p1.x = (uint16_t)(l_cx); p1.y = left->ymin;
-          p2.x = (uint16_t)(l_cx); p2.y = left->ymax;
+          /* Top post — horizontal cyan line */
+          p1.x = top->xmin; p1.y = top_cy;
+          p2.x = top->xmax; p2.y = top_cy;
           image_draw_line_color(img, &p1, &p2, col_cyan);
 
-          /* Right post */
-          p1.x = (uint16_t)(r_cx); p1.y = right->ymin;
-          p2.x = (uint16_t)(r_cx); p2.y = right->ymax;
+          /* Bottom post — horizontal green line */
+          p1.x = bot->xmin; p1.y = bot_cy;
+          p2.x = bot->xmax; p2.y = bot_cy;
           image_draw_line_color(img, &p1, &p2, col_green);
 
-          /* Horizontal gate centre line */
-          p1.x = (uint16_t)(l_cx); p1.y = (uint16_t)gate_y;
-          p2.x = (uint16_t)(r_cx); p2.y = (uint16_t)gate_y;
+          /* Gate centre — vertical white line */
+          p1.x = (uint16_t)gate_x; p1.y = top_cy;
+          p2.x = (uint16_t)gate_x; p2.y = bot_cy;
           image_draw_line_color(img, &p1, &p2, col_white);
-
-          (void)dbuf; /* suppress unused warning if draw helpers cover everything */
         }
       }
     }
@@ -310,7 +309,7 @@ void gate_detector_periodic(void)
 
 #ifdef GATE_DETECTOR_VERBOSE
   if (gd_gate_detected) {
-    fprintf(stderr, "[gate_detector] GATE detected: x=%d y=%d w=%u\n",
+    fprintf(stderr, "[gate_detector] GATE detected: x=%d y=%d aperture=%u\n",
             gd_gate_x, gd_gate_y, gd_gate_width);
   } else {
     fprintf(stderr, "[gate_detector] no gate\n");
