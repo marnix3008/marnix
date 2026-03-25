@@ -185,8 +185,8 @@ void orange_avoider_periodic(void)
 
   float moveDistance = fminf(maxDistance, 0.2f * obstacle_free_confidence);
 
-  VERBOSE_PRINT("gap_center: %.1f  confidence: %d  state: %d\n",
-                gap_center, obstacle_free_confidence, navigation_state);
+  //VERBOSE_PRINT("gap_center: %.1f  confidence: %d  state: %d\n",
+  //              gap_center, obstacle_free_confidence, navigation_state);
 
   switch (navigation_state) {
 
@@ -194,11 +194,11 @@ void orange_avoider_periodic(void)
       moveWaypointForward(WP_TRAJECTORY, 1.5f * moveDistance);
 
       if (!InsideObstacleZone(WaypointX(WP_TRAJECTORY), WaypointY(WP_TRAJECTORY))) {
-        VERBOSE_PRINT("Trajectory out of arena bounds, turning back\n");
+        VERBOSE_PRINT("OUT_OF_BOUNDS\n");
         navigation_state = OUT_OF_BOUNDS;
 
       } else if (!gap_found) {
-        VERBOSE_PRINT("No safe gap found, stopping to find new heading\n");
+        VERBOSE_PRINT("OBSTACLE_FOUND\n");
         navigation_state = OBSTACLE_FOUND;
 
       } else {
@@ -212,12 +212,11 @@ void orange_avoider_periodic(void)
           // Path ahead is dangerous: turn in place only, do NOT move forward
           float offset = gap_center - CENTER_SLICE;
           float heading_correction = (offset / CENTER_SLICE) * oa_max_heading_increment;
-          VERBOSE_PRINT("Forward danger %d, turning toward gap at slice %.1f (correction %.1f deg) — holding position\n",
-                        forward_danger, gap_center, heading_correction);
+          VERBOSE_PRINT("FORWARD_DANGER");
           increase_nav_heading(heading_correction);
         } else {
           // Path clear: fly straight
-          VERBOSE_PRINT("Flying straight, forward path clear (danger %d)\n", forward_danger);
+          VERBOSE_PRINT("FLYING STRAIGHT\n");
           moveWaypointForward(WP_GOAL, moveDistance);
         }
       }
@@ -236,8 +235,7 @@ void orange_avoider_periodic(void)
         committed_heading_increment = fallback_heading_increment();
       }
 
-      VERBOSE_PRINT("Obstacle found. Committed turn: %.1f deg/tick\n",
-                    committed_heading_increment);
+      VERBOSE_PRINT("OBSTACLE_FOUND\n");
 
       search_ticks = 0;
       navigation_state = SEARCH_FOR_SAFE_HEADING;
@@ -245,7 +243,7 @@ void orange_avoider_periodic(void)
 
     case SEARCH_FOR_SAFE_HEADING:
       if (gap_found && obstacle_free_confidence >= 2) {
-        VERBOSE_PRINT("Safe heading found (gap at slice %.1f), resuming flight\n", gap_center);
+        VERBOSE_PRINT("SEARCH_FOR_SAFE_HEADING\n");
         search_ticks = 0;
         navigation_state = SAFE;
       } else {
@@ -253,12 +251,11 @@ void orange_avoider_periodic(void)
         if (search_ticks >= SEARCH_STUCK_TICKS) {
           float jump = (committed_heading_increment >= 0.f)
                        ?  SEARCH_STUCK_JUMP_DEG : -SEARCH_STUCK_JUMP_DEG;
-          VERBOSE_PRINT("Stuck after %d ticks, jumping %.0f deg\n", search_ticks, jump);
+          VERBOSE_PRINT("STUCK_JUMP\n");
           increase_nav_heading(jump);
           search_ticks = 0;
         } else {
-          VERBOSE_PRINT("Searching: tick %d/%d, turning %.1f deg\n",
-                        search_ticks, SEARCH_STUCK_TICKS, committed_heading_increment);
+          VERBOSE_PRINT("SEARCH_STUCK_TICKS\n");
           increase_nav_heading(committed_heading_increment);
         }
       }
@@ -269,7 +266,7 @@ void orange_avoider_periodic(void)
       moveWaypointForward(WP_TRAJECTORY, 1.5f);
 
       if (InsideObstacleZone(WaypointX(WP_TRAJECTORY), WaypointY(WP_TRAJECTORY))) {
-        VERBOSE_PRINT("Back inside arena, resuming search for safe heading\n");
+        VERBOSE_PRINT("INSIDE_OBSTACLE_ZONE\n");
         increase_nav_heading(oa_max_heading_increment);
         obstacle_free_confidence = 0;
         navigation_state = SEARCH_FOR_SAFE_HEADING;
@@ -294,7 +291,6 @@ static uint8_t increase_nav_heading(float incrementDegrees)
   // set heading, declared in firmwares/rotorcraft/navigation.h
   nav.heading = new_heading;
 
-  VERBOSE_PRINT("Increasing heading to %f\n", DegOfRad(new_heading));
   return false;
 }
 
@@ -319,9 +315,7 @@ static uint8_t calculateForwards(struct EnuCoor_i *new_coor, float distanceMeter
   // Now determine where to place the waypoint you want to go to
   new_coor->x = stateGetPositionEnu_i()->x + POS_BFP_OF_REAL(sinf(heading) * (distanceMeters));
   new_coor->y = stateGetPositionEnu_i()->y + POS_BFP_OF_REAL(cosf(heading) * (distanceMeters));
-  VERBOSE_PRINT("Calculated %f m forward position. x: %f  y: %f based on pos(%f, %f) and heading(%f)\n", distanceMeters,
-                POS_FLOAT_OF_BFP(new_coor->x), POS_FLOAT_OF_BFP(new_coor->y),
-                stateGetPositionEnu_f()->x, stateGetPositionEnu_f()->y, DegOfRad(heading));
+
   return false;
 }
 
@@ -330,8 +324,7 @@ static uint8_t calculateForwards(struct EnuCoor_i *new_coor, float distanceMeter
  */
 static uint8_t moveWaypoint(uint8_t waypoint, struct EnuCoor_i *new_coor)
 {
-  VERBOSE_PRINT("Moving waypoint %d to x:%f y:%f\n", waypoint, POS_FLOAT_OF_BFP(new_coor->x),
-                POS_FLOAT_OF_BFP(new_coor->y));
+  VERBOSE_PRINT("MOVING_WAYPOINT\n");
   waypoint_move_xy_i(waypoint, new_coor->x, new_coor->y);
   return false;
 }
