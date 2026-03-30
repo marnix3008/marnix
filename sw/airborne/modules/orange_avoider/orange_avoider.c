@@ -14,7 +14,7 @@
  * its center. Falls back to weighted-centroid turning when no valid gap exists.
  *
  * The OBSTACLE_DETECTION_ID define must match the sender ID used by the vision
- * module. Set it in your airframe XML:
+ * module. Adjust in our airframe XML:
  *   <define name="OBSTACLE_DETECTION_ID" value="1"/>
  */
 
@@ -38,7 +38,7 @@
 #define VERBOSE_PRINT(...)
 #endif
 
-#define NUM_SLICES   12 // Number of vertical slices, must match the vision module
+#define NUM_SLICES   12 // Number of vertical slices (match it to the vision module)
 #define CENTER_SLICE 5.5f   // (NUM_SLICES - 1) / 2.0, ADJUST MANUALLY IF NUM_SLICES CHANGES
 
 static uint8_t moveWaypointForward(uint8_t waypoint, float distanceMeters);
@@ -153,12 +153,12 @@ static float fallback_heading_increment(void)
   float obstacle_offset = weighted_sum / total; // negative=left, positive=right
 
   // If wall is symmetric (centroid within 1 slice of center), the signal is too
-  // weak to pick a direction — default to a full right turn to break the deadlock.
+  // weak to pick a direction, default to a full right turn to break the deadlock.
   if (obstacle_offset > -1.f && obstacle_offset < 1.f) {
     return oa_max_heading_increment;
   }
 
-  // turn away: obstacle right → turn left (negative increment), and vice versa
+  // turn away: obstacle right -> turn left (negative increment), and vice versa
   return -(obstacle_offset / CENTER_SLICE) * oa_max_heading_increment;
 }
 
@@ -272,7 +272,7 @@ static uint8_t increase_nav_heading(float incrementDegrees)
   // normalize heading to [-pi, pi]
   FLOAT_ANGLE_NORMALIZE(new_heading);
 
-  // set heading, declared in firmwares/rotorcraft/navigation.h
+  // set heading (declared in firmwares/rotorcraft/navigation.h)
   nav.heading = new_heading;
 
   return false;
