@@ -42,6 +42,9 @@ extern uint8_t gd_min_ratio_x10;  /* min width/height ratio × 10 (e.g. 18 = 1.8
 extern uint8_t gd_min_col_fill;   /* min % of sub-sampled columns blue in a post row (0-100) */
 extern uint8_t gd_min_post_sep;   /* min sub-sampled row gap between the two posts */
 
+/* Temporal ROI: search-window half-height in sub-sampled rows (GCS-tunable). */
+extern uint8_t gd_roi_margin;
+
 /* Draw detected posts / gate on the image when true. */
 extern bool gd_draw;
 

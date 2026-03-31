@@ -61,6 +61,7 @@ uint8_t gd_min_ratio_x10  = 18;   /* min width/height ratio × 10 (e.g. 18 = 1.8
 uint8_t gd_min_col_fill   = 12;   /* ≥ 12 % of sub-sampled columns must be blue in a post row */
 uint8_t gd_min_post_sep   = 5;    /* posts must be ≥ 5 sub-sampled rows apart */
 bool    gd_draw           = true;
+uint8_t gd_roi_margin     = 20;    /* temporal ROI half-height in sub-sampled rows */
 
 /* -------------------------------------------------------------------------
  * Public result variables
@@ -75,6 +76,8 @@ uint16_t gd_gate_width    = 0;
 static bool     _det;
 static int16_t  _gx, _gy;
 static uint16_t _gw;
+static uint16_t _prev_top;   /* top post start row (sub-sampled) from last detection */
+static uint16_t _prev_bot;   /* bottom post end row (sub-sampled) from last detection */
 static pthread_mutex_t _mutex;
 
 /* -------------------------------------------------------------------------
@@ -107,6 +110,23 @@ static struct image_t *gate_detector_cb(struct image_t *img,
 
   if (srows > GD_MAX_SSIZE) { return img; }   /* safety guard */
 
+  /* ---- 0. Temporal ROI: restrict search window from previous detection - */
+  /* Between frames at 20 fps the gate moves at most a few sub-sampled rows.
+   * When a prior detection exists, only scan a margin-padded band around the
+   * previous posts; fall back to full-image scan on detection loss.        */
+  pthread_mutex_lock(&_mutex);
+  const bool     prior_det = _det;
+  const uint16_t prior_top = _prev_top;
+  const uint16_t prior_bot = _prev_bot;
+  pthread_mutex_unlock(&_mutex);
+
+  uint16_t row_lo = 0u, row_hi = srows;
+  if (prior_det) {
+    row_lo = (prior_top > gd_roi_margin) ? (uint16_t)(prior_top - gd_roi_margin) : 0u;
+    row_hi = ((uint32_t)prior_bot + gd_roi_margin < srows)
+             ? (uint16_t)(prior_bot + gd_roi_margin) : srows;
+  }
+
   /* ---- 1. Build row histogram ---------------------------------------- */
   /* row_count[r] = number of blue pixels in sub-sampled row r.
    * row_xmin/xmax track horizontal span (in original image columns).    */
@@ -114,8 +134,8 @@ static struct image_t *gate_detector_cb(struct image_t *img,
   static uint16_t row_xmin[GD_MAX_SSIZE];
   static uint16_t row_xmax[GD_MAX_SSIZE];
 
-  memset(row_count, 0, srows * sizeof(uint16_t));
-  for (uint16_t r = 0; r < srows; r++) {
+  memset(row_count, 0, srows * sizeof(uint16_t));   /* zero all — rows outside ROI stay 0 */
+  for (uint16_t r = row_lo; r < row_hi; r++) {
     row_xmin[r] = W;
     row_xmax[r] = 0;
   }
@@ -125,7 +145,7 @@ static struct image_t *gate_detector_cb(struct image_t *img,
    *   buf[ row*2W + 4c ]     = U (Cb)
    *   buf[ row*2W + 4c + 1 ] = Y0
    *   buf[ row*2W + 4c + 2 ] = V (Cr)                                   */
-  for (uint16_t row = 0; row < H; row += 2) {
+  for (uint16_t row = (uint16_t)(row_lo * 2u); row < (uint16_t)(row_hi * 2u); row += 2) {
     const uint16_t r        = row / 2;
     const uint32_t row_base = (uint32_t)row * 2u * W;
 
@@ -201,6 +221,7 @@ static struct image_t *gate_detector_cb(struct image_t *img,
   bool det = false;
   int16_t gate_x = 0, gate_y = 0;
   uint16_t gate_w = 0;
+  uint16_t post_top_start = 0u, post_bot_end = 0u;   /* for ROI update */
 
   if (best[0].score > 0 && best[1].score > 0) {
     /* Sort so that post0 is top, post1 is bottom. */
@@ -224,6 +245,8 @@ static struct image_t *gate_detector_cb(struct image_t *img,
 
       if (t_ok && b_ok) {
         det = true;
+        post_top_start = top->start;
+        post_bot_end   = bot->end;
 
         /* Post centres in original pixel coordinates.
          * Sub-sampled row r → original row 2r, so centre = start + end. */
@@ -252,20 +275,23 @@ static struct image_t *gate_detector_cb(struct image_t *img,
 
           struct point_t p1, p2;
 
-          /* Top post — horizontal cyan line */
-          p1.x = top->xmin; p1.y = top_cy;
-          p2.x = top->xmax; p2.y = top_cy;
+          /* Top post — horizontal cyan lines (2px thick) */
+          p1.x = top->xmin; p2.x = top->xmax;
+          p1.y = p2.y = top_cy;
           image_draw_line_color(img, &p1, &p2, col_cyan);
+          if (top_cy + 1u < H) { p1.y = p2.y = top_cy + 1u; image_draw_line_color(img, &p1, &p2, col_cyan); }
 
-          /* Bottom post — horizontal green line */
-          p1.x = bot->xmin; p1.y = bot_cy;
-          p2.x = bot->xmax; p2.y = bot_cy;
+          /* Bottom post — horizontal green lines (2px thick) */
+          p1.x = bot->xmin; p2.x = bot->xmax;
+          p1.y = p2.y = bot_cy;
           image_draw_line_color(img, &p1, &p2, col_green);
+          if (bot_cy + 1u < H) { p1.y = p2.y = bot_cy + 1u; image_draw_line_color(img, &p1, &p2, col_green); }
 
-          /* Gate centre — vertical white line */
-          p1.x = (uint16_t)gate_x; p1.y = top_cy;
-          p2.x = (uint16_t)gate_x; p2.y = bot_cy;
+          /* Gate centre — vertical white lines (2px thick) */
+          p1.y = top_cy; p2.y = bot_cy;
+          p1.x = p2.x = (uint16_t)gate_x;
           image_draw_line_color(img, &p1, &p2, col_white);
+          if ((uint16_t)gate_x + 1u < W) { p1.x = p2.x = (uint16_t)gate_x + 1u; image_draw_line_color(img, &p1, &p2, col_white); }
         }
       }
     }
@@ -277,6 +303,10 @@ static struct image_t *gate_detector_cb(struct image_t *img,
   _gx  = gate_x;
   _gy  = gate_y;
   _gw  = gate_w;
+  if (det) {
+    _prev_top = post_top_start;
+    _prev_bot = post_bot_end;
+  }
   pthread_mutex_unlock(&_mutex);
 
   return img;
@@ -291,6 +321,7 @@ void gate_detector_init(void)
   gd_gate_detected = false;
   gd_gate_x = 0; gd_gate_y = 0; gd_gate_width = 0;
   _det = false; _gx = 0; _gy = 0; _gw = 0;
+  _prev_top = 0; _prev_bot = 0;
   pthread_mutex_init(&_mutex, NULL);
 
 #ifdef GATE_DETECTOR_CAMERA
